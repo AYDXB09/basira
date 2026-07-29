@@ -362,30 +362,41 @@ Rules: exactly 4 questions, difficulty ramping easy → hard, all open-ended (no
       ], { maxTokens: 350 });
       history.push({ role: 'user', content: text }, { role: 'assistant', content: out });
       await say(out);
-    } catch (_) {
-      await say('Connection blinked. Say that again?');
+    } catch (e) {
+      await say(LLM.explainError(e));
     }
   }
 
   /* ==================== FREE CONVERSATION ==================== */
   async function converse(text) {
-    if (busy) return;
+    if (busy) {
+      // don't drop the user on the floor — queue one turn
+      console.warn('[converse] busy, retrying in 400ms');
+      setTimeout(() => { if (!busy) converse(text); }, 400);
+      return;
+    }
     busy = true;
     APP.state('thinking');
     const tick = setInterval(() => EARCON.think(), 1700);
     try {
-      history.push({ role: 'user', content: text });
+      // history stays text-only so later turns never re-ship camera base64
+      history.push({ role: 'user', content: String(text) });
+      const slimHistory = history.slice(-10).map(m => ({
+        role: m.role,
+        content: LLM.extractText(m.content) || '[image]'
+      }));
       const out = await LLM.chat([
-        { role: 'system', content: PED.systemPrompt('Live voice conversation. Answer directly, then stop.') + '\n\nSTUDENT\'S CLASS MATERIALS:\n' + materialsContext().slice(0, 5000) },
-        ...history.slice(-12)
-      ], { maxTokens: 400 });
+        { role: 'system', content: PED.systemPrompt('Live voice conversation. Answer directly, then stop. 20-80 words.') + '\n\nSTUDENT\'S CLASS MATERIALS:\n' + materialsContext().slice(0, 3500) },
+        ...slimHistory
+      ], { maxTokens: 350, timeoutMs: 45000 });
       history.push({ role: 'assistant', content: out });
       clearInterval(tick); busy = false;
       await say(out);
-    } catch (_) {
+    } catch (e) {
       clearInterval(tick); busy = false;
       EARCON.error();
-      await say('I lost the connection for a second. Say that again?');
+      console.error('[converse]', e);
+      await say(LLM.explainError(e));
     }
   }
 
