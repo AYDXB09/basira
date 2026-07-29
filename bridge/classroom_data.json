@@ -1,53 +1,12 @@
 {
   "course": {
-    "name": "Physics 11",
-    "teacher": "Mr. Hassan",
-    "section": "Grade 11 — Science"
+    "name": "Demo Course",
+    "teacher": "Demo Teacher",
+    "section": "sample only"
   },
   "announcements": [
-    "Reminder: Forces and Motion problem set due Friday.",
-    "Lab safety forms must be signed before next week's practical."
+    "This is SAMPLE data for testing. Not a real class."
   ],
-  "materials": [
-    {
-      "id": "mat-1",
-      "title": "Chapter 5 slides — Forces and Motion",
-      "type": "slides",
-      "text": "Newton's second law: force equals mass times acceleration, F = m a. For the same force, more mass means less acceleration. Units: force in newtons, mass in kilograms, acceleration in meters per second squared. Slide 7 shows a velocity-time graph of a trolley: flat at zero, then a straight climb under constant force, then a steeper climb when the force is doubled. The slope of a velocity-time graph IS the acceleration. Slide 9: weight is a force, w = m g, with g about nine point eight meters per second squared on Earth."
-    },
-    {
-      "id": "mat-2",
-      "title": "Velocity-time graph worksheet",
-      "type": "pdf",
-      "text": "Worksheet: reading velocity-time graphs. A horizontal line means constant speed. A rising straight line means constant acceleration. The steeper the line, the greater the acceleration. Area under the line equals distance travelled. Question examples: find acceleration from a line rising 12 meters per second over 4 seconds (answer: 3 meters per second squared)."
-    },
-    {
-      "id": "mat-3",
-      "title": "Textbook extract — friction and net force",
-      "type": "doc",
-      "text": "Friction opposes motion between surfaces in contact. Net force is the sum of all forces including friction. An object moving at constant velocity has zero net force acting on it. If forward push equals backward friction, the forces balance and acceleration is zero."
-    }
-  ],
-  "courseWork": [
-    {
-      "id": "hw-1",
-      "title": "Forces and Motion problem set",
-      "due": "Friday",
-      "questions": [
-        "Question one: A 2 kilogram trolley is pushed with a net force of 6 newtons. What is its acceleration?",
-        "Question two: The same push is applied to a 6 kilogram trolley. What happens to the acceleration, and why?",
-        "Question three: A velocity-time graph shows a straight line rising 15 meters per second over 5 seconds. Find the acceleration and describe the motion in words.",
-        "Question four: A box slides at constant velocity. What is the net force on it, and what does that tell you about the friction?"
-      ]
-    },
-    {
-      "id": "hw-2",
-      "title": "Lab prep: measuring acceleration",
-      "due": "next Tuesday",
-      "questions": [
-        "Describe how you would measure the acceleration of a trolley using a ticker-tape timer or motion sensor.",
-        "State one source of error in the experiment and how to reduce it."
-      ]
-    }
-  ]
+  "materials": [],
+  "courseWork": []
 }

@@ -1,20 +1,16 @@
 # ============================================================================
 # bridge.py — local bridge for the Voice Tutor.
-#   * Neural TTS (Microsoft edge-tts, free, no key)   GET /tts?text&voice
-#   * Google Classroom connector (sandbox)            GET /classroom/summary
-#                                                     GET /classroom/materials
-#                                                     GET /classroom/coursework
+#   * Neural TTS (Microsoft edge-tts)                 GET /tts?text&voice
+#   * Google Classroom sandbox                        GET /classroom/summary|materials|coursework
+#   * Open Google Classroom in the OS browser         GET /classroom/open
+#   * Live scrape hook (optional Playwright later)    GET /classroom/live
 #   * health                                          GET /ping
-#
-# The Classroom endpoints serve bridge/classroom_data.json — a sandbox with
-# the exact shape a real Google Classroom API pull produces (courses,
-# courseWork, materials). Swapping in live OAuth = replace load_classroom().
-#
 # Run:  python bridge\bridge.py
 # ============================================================================
 import asyncio
 import json
 import os
+import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -23,6 +19,7 @@ import edge_tts
 PORT = 8790
 DEFAULT_VOICE = "en-US-EmmaMultilingualNeural"
 HERE = os.path.dirname(os.path.abspath(__file__))
+CLASSROOM_URL = "https://classroom.google.com/"
 
 
 def load_classroom() -> dict:
@@ -75,6 +72,21 @@ class Handler(BaseHTTPRequestHandler):
                 print("TTS error:", exc)
                 return self._json({"error": str(exc)}, 500)
 
+        if url.path == "/classroom/open":
+            try:
+                webbrowser.open(CLASSROOM_URL)
+                return self._json({"ok": True, "opened": CLASSROOM_URL})
+            except Exception as exc:  # noqa: BLE001
+                return self._json({"ok": False, "error": str(exc)}, 500)
+
+        if url.path == "/classroom/live":
+            # Hook for future Playwright / Google Classroom OAuth live pull.
+            return self._json({
+                "ok": False,
+                "reason": "live-not-configured",
+                "hint": "Use /classroom/open then upload files, or say 'load demo class'."
+            })
+
         if url.path == "/classroom/summary":
             data = load_classroom()
             course = data["course"]
@@ -100,5 +112,5 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print(f"Bridge on http://127.0.0.1:{PORT}  (TTS voice: {DEFAULT_VOICE} + Classroom sandbox)")
+    print(f"Bridge on http://127.0.0.1:{PORT}  (TTS + Classroom open/demo)")
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

@@ -23,5 +23,5 @@ window.B_CONFIG = {
   maxFramesPerVideo: 6,
   frameWidth: 720,
   classroomSnapshotSec: 45,
-  studentName: 'Alex'
+  studentName: ''   // unused — never address the student by name
 };
