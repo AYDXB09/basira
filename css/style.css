@@ -227,3 +227,27 @@ body {
   border: none; background: rgba(0,0,0,0.6); color: #fff;
   cursor: pointer; font-size: 12px;
 }
+
+/* ================= key gate ================= */
+#keygate {
+  position: fixed; inset: 0; z-index: 40;
+  background: rgba(0,0,0,0.88); backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center;
+}
+.kg-card {
+  background: #101017; border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 18px; padding: 34px 38px; width: min(90vw, 430px);
+  display: flex; flex-direction: column; gap: 14px;
+}
+.kg-card h2 { font-size: 20px; }
+.kg-card p { font-size: 14px; color: rgba(255,255,255,0.55); line-height: 1.5; }
+#kgInput {
+  background: #000; color: #fff; border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 10px; padding: 12px 14px; font-size: 14px; outline: none;
+}
+#kgInput:focus { border-color: #34d399; }
+#kgSave {
+  background: #34d399; color: #04120c; font-weight: 700; border: none;
+  border-radius: 10px; padding: 12px; font-size: 15px; cursor: pointer;
+}
+.kg-hint { font-size: 12px !important; color: rgba(255,255,255,0.35) !important; }

@@ -38,6 +38,18 @@
   let booted = false;
   async function tryBoot() {
     if (booted) return;
+
+    // KEY GATE: without an OpenRouter key the brain can't answer — say it
+    // plainly and show the one-time paste box instead of failing vaguely.
+    if (!window.B_CONFIG.openRouterKey) {
+      document.getElementById('keygate').hidden = false;
+      document.getElementById('statusText').textContent = 'needs API key';
+      caption('assistant', 'One-time setup: paste your OpenRouter API key in the box, then I wake up for good.');
+      TTS.speak('One time setup. Paste your Open Router A P I key in the box on screen, then press save and start.');
+      document.getElementById('kgInput').focus();
+      return;
+    }
+
     booted = true;
     try { await ASSIST.boot(); }
     catch (e) { console.error('boot failed', e); booted = false; }
@@ -63,6 +75,16 @@
       document.getElementById('fileInput').click();
     });
     document.getElementById('fileInput').addEventListener('change', (e) => ASSIST.onFiles(e.target.files));
+
+    // key gate save
+    const kgSave = () => {
+      const v = document.getElementById('kgInput').value.trim();
+      if (!v.startsWith('sk-or-')) { document.getElementById('kgInput').placeholder = 'that does not look like an OpenRouter key'; return; }
+      localStorage.setItem('basira.openRouterKey', v);
+      location.reload();
+    };
+    document.getElementById('kgSave').addEventListener('click', kgSave);
+    document.getElementById('kgInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') kgSave(); });
   });
 
   window.APP = { state, caption, hint, mic };

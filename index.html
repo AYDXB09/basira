@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Basira — Voice Tutor</title>
-<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
 
@@ -62,20 +63,31 @@
     </div>
   </footer>
 
+  <!-- KEY GATE: shown only when no OpenRouter key is saved -->
+  <div id="keygate" hidden>
+    <div class="kg-card">
+      <h2>One-time setup</h2>
+      <p>Paste your OpenRouter API key. It is stored only in this browser.</p>
+      <input id="kgInput" type="password" placeholder="sk-or-v1-…" autocomplete="off" spellcheck="false">
+      <button id="kgSave">Save & start</button>
+      <p class="kg-hint">Get a key at openrouter.ai/keys</p>
+    </div>
+  </div>
+
   <input type="file" id="fileInput" multiple
          accept="video/*,image/*,.txt,.md,.srt,.vtt,.pdf,text/plain" hidden>
 
-<script src="js/config.js"></script>
-<script src="js/config.local.js"></script>
-<script src="js/earcons.js"></script>
-<script src="js/orb.js"></script>
-<script src="js/llm.js"></script>
-<script src="js/pedagogy.js"></script>
-<script src="js/tts.js"></script>
-<script src="js/stt.js"></script>
-<script src="js/ingest.js"></script>
-<script src="js/content.js"></script>
-<script src="js/assistant.js"></script>
-<script src="js/app.js"></script>
+<script src="js/config.js?v=4"></script>
+<script src="js/config.local.js" onerror="this.remove()"></script>
+<script src="js/earcons.js?v=4"></script>
+<script src="js/orb.js?v=4"></script>
+<script src="js/llm.js?v=4"></script>
+<script src="js/pedagogy.js?v=4"></script>
+<script src="js/tts.js?v=4"></script>
+<script src="js/stt.js?v=4"></script>
+<script src="js/ingest.js?v=4"></script>
+<script src="js/content.js?v=4"></script>
+<script src="js/assistant.js?v=4"></script>
+<script src="js/app.js?v=4"></script>
 </body>
 </html>
