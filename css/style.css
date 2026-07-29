@@ -1,0 +1,229 @@
+/* ============================================================================
+ * Basira — clean voice-mode UI.
+ * Pure black. The orb (REPLICATE.mp4 build) is the interface; everything
+ * else whispers: hairline top chrome, two-line conversation, two soft
+ * buttons. Nothing competes with the orb.
+ * ========================================================================== */
+:root { --glow: 0.8; }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: #000;
+  color: #ececf1;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ================= top chrome ================= */
+#top {
+  position: fixed; top: 0; left: 0; right: 0;
+  height: 64px; z-index: 5;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 28px;
+}
+#brand {
+  font-size: 15px; font-weight: 600; letter-spacing: 5px;
+  color: rgba(255,255,255,0.34); text-transform: lowercase;
+}
+#status {
+  display: flex; align-items: center; gap: 9px;
+  font-size: 12.5px; letter-spacing: 0.6px;
+  color: rgba(255,255,255,0.38);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.09);
+  padding: 7px 14px; border-radius: 999px;
+  backdrop-filter: blur(10px);
+}
+#micdot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #666; transition: background .3s, box-shadow .3s;
+}
+#micdot.on      { background: #34d399; box-shadow: 0 0 8px rgba(52,211,153,0.7); }
+#micdot.waiting { background: #fbbf24; box-shadow: 0 0 8px rgba(251,191,36,0.6); animation: blink 1s infinite; }
+#micdot.blocked { background: #ef4444; box-shadow: 0 0 8px rgba(239,68,68,0.6); }
+@keyframes blink { 50% { opacity: 0.3; } }
+
+/* ================= stage ================= */
+#stage {
+  position: fixed; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 48px;
+  padding-bottom: 40px;
+}
+
+/* ================= the orb (REPLICATE build) ================= */
+#orb {
+  position: relative;
+  width: min(48vmin, 350px);
+  height: min(48vmin, 350px);
+  container-type: size;
+}
+.halo {
+  position: absolute; inset: -24%;
+  border-radius: 50%;
+  background: radial-gradient(circle,
+    rgba(70, 90, 255, calc(0.10 * var(--glow))) 38%,
+    rgba(120, 60, 255, calc(0.05 * var(--glow))) 55%,
+    transparent 70%);
+  filter: blur(14px);
+  pointer-events: none;
+}
+.shell {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 44%,
+      rgba(14, 16, 26, 0.95) 0%,
+      rgba(5, 6, 12, 0.98) 42%,
+      rgba(10, 14, 28, 0.95) 66%,
+      rgba(28, 38, 74, 0.55) 86%,
+      rgba(46, 60, 110, 0.28) 94%,
+      transparent 100%);
+}
+.rim {
+  position: absolute; inset: -1%;
+  border-radius: 50%;
+  opacity: calc(var(--glow) * 0.9);
+  background: conic-gradient(from 210deg,
+    rgba(64, 120, 255, 0.30),
+    rgba(140, 60, 255, 0.16),
+    rgba(255, 150, 60, 0.14),
+    rgba(40, 190, 255, 0.22),
+    rgba(90, 60, 255, 0.30),
+    rgba(64, 120, 255, 0.30));
+  -webkit-mask: radial-gradient(circle, transparent 78%, #000 88%, #000 96%, transparent 100%);
+          mask: radial-gradient(circle, transparent 78%, #000 88%, #000 96%, transparent 100%);
+  animation: rimspin 26s linear infinite;
+  filter: blur(3px);
+  pointer-events: none;
+}
+@keyframes rimspin { to { transform: rotate(360deg); } }
+
+.inner {
+  position: absolute; inset: 1.5%;
+  border-radius: 50%;
+  overflow: hidden;
+}
+.cluster {
+  position: absolute; left: 50%; top: 50%;
+  width: 100%; height: 100%;
+  transform: translate(-50%, -50%);
+  will-change: transform;
+}
+.ball {
+  position: absolute; left: 50%; top: 50%;
+  border-radius: 50%;
+  will-change: transform;
+}
+.ball-blue {
+  width: 62cqw; height: 62cqw;
+  background: radial-gradient(circle at 42% 36%,
+    #4a6cff, #2b3fe0 45%, #131b8a 72%, rgba(8, 10, 60, 0) 86%);
+  filter: blur(10px) saturate(1.2);
+  opacity: 0.85;
+}
+.ball-purple {
+  width: 44cqw; height: 44cqw;
+  background: radial-gradient(circle at 40% 32%,
+    #d9a0ff 0%, #a44dff 30%, #7714f0 58%, #3c0aa0 82%, rgba(40, 5, 110, 0) 94%);
+  filter: blur(4px) saturate(1.35);
+}
+.ball-cyan {
+  width: 40cqw; height: 40cqw;
+  background: radial-gradient(circle at 42% 34%,
+    #bdf3ff 0%, #4fd0ff 32%, #1f8fff 60%, #0b4bc9 84%, rgba(6, 40, 130, 0) 95%);
+  filter: blur(4px) saturate(1.3);
+}
+.ball-amber {
+  width: 34cqw; height: 34cqw;
+  background: radial-gradient(circle at 44% 34%,
+    #ffe9a8 0%, #ffc23e 34%, #ff9a1f 62%, #b85e00 86%, rgba(120, 60, 0, 0) 96%);
+  filter: blur(3px) saturate(1.3);
+}
+.scatter {
+  position: absolute; left: 50%; top: 50%;
+  width: 90cqw; height: 90cqw;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle,
+    rgba(120, 110, 255, calc(0.16 * var(--glow))),
+    rgba(60, 130, 255, calc(0.08 * var(--glow))) 55%,
+    transparent 75%);
+  filter: blur(18px);
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+/* ================= conversation (two quiet lines) ================= */
+#convo {
+  width: min(84vw, 640px);
+  min-height: 76px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  text-align: center;
+}
+#line-user {
+  font-size: 14.5px;
+  color: rgba(255,255,255,0.35);
+  min-height: 18px;
+  max-width: 100%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#line-user:not(:empty)::before { content: '“'; }
+#line-user:not(:empty)::after  { content: '”'; }
+#line-tutor {
+  font-size: 19px; line-height: 1.55; font-weight: 350;
+  color: rgba(255,255,255,0.92);
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ================= bottom bar ================= */
+#bar {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  height: 108px; z-index: 5;
+  display: flex; align-items: flex-start; justify-content: center; gap: 44px;
+  padding-top: 6px;
+}
+.baction {
+  display: flex; flex-direction: column; align-items: center; gap: 7px;
+}
+.baction span {
+  font-size: 11.5px; letter-spacing: 1.2px; text-transform: uppercase;
+  color: rgba(255,255,255,0.30);
+}
+.bbtn {
+  width: 54px; height: 54px; border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.055);
+  color: rgba(255,255,255,0.80);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: background .15s, border-color .15s, transform .1s;
+}
+.bbtn:hover  { background: rgba(255,255,255,0.12); }
+.bbtn:active { transform: scale(0.92); }
+.bbtn.on {
+  background: rgba(52, 211, 153, 0.16);
+  border-color: rgba(52, 211, 153, 0.45);
+  color: #fff;
+}
+
+/* ================= camera dock ================= */
+#camDock {
+  position: fixed; left: 20px; bottom: 122px; z-index: 6;
+  border-radius: 14px; overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow: 0 12px 48px rgba(0,0,0,0.7);
+}
+#camVideo { width: min(34vw, 300px); display: block; background: #0a0a0a; }
+#camClose {
+  position: absolute; top: 6px; right: 6px;
+  width: 26px; height: 26px; border-radius: 50%;
+  border: none; background: rgba(0,0,0,0.6); color: #fff;
+  cursor: pointer; font-size: 12px;
+}

@@ -1,0 +1,9 @@
+js/config.local.js
+__pycache__/
+*.pyc
+.venv/
+bridge/.venv/
+.DS_Store
+Thumbs.db
+*.mp3
+.env
