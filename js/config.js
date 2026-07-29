@@ -10,7 +10,7 @@ window.B_CONFIG = {
   })(),
   models: {
     chat: 'qwen/qwen3.7-plus',
-    tts:  'openai/gpt-audio-mini'
+    tts:  'openai/gpt-audio-mini'   // OpenRouter streaming neural voice (pcm16)
   },
   bridge: 'http://127.0.0.1:8790',
   voices: [
@@ -18,7 +18,7 @@ window.B_CONFIG = {
     'en-US-AndrewMultilingualNeural',
     'en-US-AvaMultilingualNeural'
   ],
-  ttsVoice: 'nova',
+  ttsVoice: 'nova',                   // gpt-audio voice: nova|alloy|shimmer|echo|fable|onyx|coral
   timeoutMs: 90000,
   maxFramesPerVideo: 6,
   frameWidth: 720,
