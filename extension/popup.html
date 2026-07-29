@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 14px; width: 260px; background: #0b0e14; color: #eee; }
+    h1 { font-size: 14px; margin: 0 0 8px; letter-spacing: 1px; }
+    p { font-size: 12px; color: #9aa; line-height: 1.45; margin: 0 0 10px; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: #666; }
+    .dot.on { background: #34d399; box-shadow: 0 0 6px #34d399; }
+    .dot.off { background: #f87171; }
+    code { font-size: 11px; color: #c4b5fd; }
+  </style>
+</head>
+<body>
+  <h1>BASIRA</h1>
+  <p><span class="dot" id="dot"></span><span id="status">checking…</span></p>
+  <p>Keep Chrome open as usual. When Basira says “connect classroom”, this extension scrapes your signed-in Classroom tabs.</p>
+  <p>Bridge: <code>127.0.0.1:8790</code></p>
+  <script src="popup.js"></script>
+</body>
+</html>

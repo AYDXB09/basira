@@ -66,6 +66,9 @@
     } catch (_) {}
 
     if (!window.B_CONFIG.openRouterKey) {
+      // never re-show / re-speak the gate while it's already open
+      const gate = document.getElementById('keygate');
+      if (gate && gate.classList.contains('open')) return;
       showKeyGate('');
       caption('assistant', 'Paste your OpenRouter API key, then press Save & start.');
       try { TTS.speak('Paste your Open Router key, then press Save and start.'); } catch (_) {}

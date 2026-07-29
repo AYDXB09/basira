@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .venv/
 bridge/.venv/
+bridge/chrome-profile/
 .DS_Store
 Thumbs.db
 *.mp3

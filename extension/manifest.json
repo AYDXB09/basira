@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Basira Classroom Bridge",
+  "version": "1.0.0",
+  "description": "Lets Basira read Google Classroom in YOUR logged-in Chrome tabs. No closing tabs.",
+  "permissions": ["tabs", "scripting", "storage"],
+  "host_permissions": [
+    "https://classroom.google.com/*",
+    "http://127.0.0.1:8790/*",
+    "http://localhost:8790/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Basira Classroom",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}

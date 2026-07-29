@@ -118,8 +118,14 @@
     if (/\bend class\b|\bstop class\b/.test(t)) return endClassroom();
     if (/classroom mode|start class\b|class mode/.test(t)) return startClassroom();
 
-    // OPEN / CHECK real Classroom — never invent course data
-    if (/open (google )?classroom|open (my )?classroom|check (my )?(latest )?assignment|check (my )?classroom|what('?s| is) (my )?(latest )?assignment/.test(t)) {
+    // Classroom agent — broad match so GPT never steals these
+    // "connect my classroom", "open google class", "check my class", etc.
+    if (
+      (/\b(connect|open|check|pull|link|access|go to|show|read)\b/.test(t) &&
+        /\b(class|classroom|coursework|google)\b/.test(t)) ||
+      /\bmy (latest )?assignment\b/.test(t) ||
+      /\bgoogle classroom\b/.test(t)
+    ) {
       return handleClassroomRequest(text);
     }
 
@@ -143,7 +149,7 @@
     if (/\brepeat\b|say (that|it) again/.test(t)) return say(lastSaid || 'Nothing to repeat yet.');
     if (/\b(stop|pause|be quiet|silence|shut up)\b/.test(t)) { TTS.stop(); APP.state('listening'); return; }
     if (/what can you do|\bhelp\b|commands/.test(t))
-      return say('I open Google Classroom in your browser, help with files you upload, listen in class, quiz you, and answer short questions. I never invent your homework.');
+      return say('I can open Google Classroom, read what’s on the page, help with uploaded files, quiz you, and answer questions.');
     if (/camera (on|off)|look at (the )?(screen|board)/.test(t)) {
       if (/off/.test(t)) { closeCamera(); return say('Camera off.'); }
       await openCamera();
@@ -230,21 +236,84 @@
   }
 
   async function handleClassroomRequest() {
-    // REAL classroom request — open the site. Never invent Physics / fake homework.
     classroom = null;
     history = [];
     mode = 'idle';
     assignment = null;
-    const opened = await openClassroomInBrowser();
-    if (opened) {
-      await say(
-        'Opened Google Classroom. I cannot read your private assignments from here. ' +
-        'Upload the file or paste the text and I will help. I will not invent classwork or a teacher.'
-      );
-    } else {
-      await say(
-        'Could not open the browser. Go to classroom.google.com, then upload or paste the assignment. I will not invent classwork.'
-      );
+    APP.state('thinking');
+    if (window.TELEM) TELEM.logEvent('classroom-live-start', {});
+
+    // Optional short status
+    await say('Opening Google Classroom.');
+
+    try {
+      const r = await fetch(C.bridge + '/classroom/live', { signal: AbortSignal.timeout(90000) });
+      const data = await r.json();
+      if (window.TELEM) TELEM.logEvent('classroom-live-result', { ok: !!data.ok, reason: data.reason || null, ms: data.elapsedMs || null });
+
+      if (data.reason === 'login-required') {
+        await say('Sign in to Google in the window that opened, then say check classroom again.');
+        return;
+      }
+      if (!data.ok) {
+        // still try plain open so something happens
+        await openClassroomInBrowser();
+        await say('I opened Classroom, but could not read the page yet. Try again after it loads, or upload the assignment.');
+        return;
+      }
+
+      // Normalize into our classroom state
+      const mats = data.materials || [];
+      const works = data.courseWork || data.coursework || [];
+      classroom = {
+        course: (data.course && (data.course.name || data.course)) || 'your class',
+        teacher: (data.course && data.course.teacher) || '',
+        materialCount: mats.length,
+        materials: mats.map(m => m.title || 'file'),
+        courseworkCount: works.length,
+        coursework: works.map(w => ({ title: w.title, due: w.due || '' })),
+        announcements: data.announcements || [],
+        materialsFull: mats,
+        works
+      };
+
+      // Speak what we actually found
+      const courseNames = (data.courses || []).map(c => c.title).filter(Boolean);
+      let line = '';
+      if (courseNames.length === 1) line = `You have one class: ${courseNames[0]}. `;
+      else if (courseNames.length > 1) line = `I see ${courseNames.length} classes. Looking at ${courseNames[0]}. `;
+      else line = `Opened ${classroom.course}. `;
+
+      if (works.length && works[0].questions && works[0].questions.length) {
+        const top = works[0].questions.slice(0, 4).join('. ');
+        line += `Latest items: ${top}`;
+      } else if (mats.length && mats[0].text) {
+        line += mats[0].text.split('\n').slice(0, 4).join('. ');
+      } else {
+        line += 'I am in the class. Tell me what you need, or open Classwork and ask again.';
+      }
+
+      // Keep history for follow-ups with GPT Live
+      history = [
+        { role: 'assistant', content: line },
+        { role: 'user', content: 'What is my latest assignment? Summarize it briefly.' }
+      ];
+      // Use GPT Live to polish a short answer from the scrape
+      try {
+        const polished = await TTS.speakLLM([
+          { role: 'system', content: PED.systemPrompt('Answer briefly from the materials only. One or two short sentences.') + '\n\n' + contextBlock() },
+          { role: 'user', content: 'What is my latest assignment based on the pulled Classroom text?' }
+        ], { onTranscript: (t) => APP.caption('assistant', t), maxTokens: 400 });
+        const out = (polished.transcript || line).trim();
+        history = [{ role: 'assistant', content: out }];
+        APP.state(STT.running ? 'listening' : 'idle');
+      } catch (_) {
+        await say(line.slice(0, 400));
+      }
+    } catch (e) {
+      if (window.TELEM) TELEM.logEvent('classroom-live-error', { error: String(e) });
+      await openClassroomInBrowser();
+      await say('Opened Classroom. Ask me again in a moment if the window is still loading.');
     }
   }
 
@@ -253,7 +322,6 @@
   }
 
   async function connectClassroom(preferDemo) {
-    // Demo pack ONLY when preferDemo === true (explicit "load demo class")
     if (!preferDemo) return handleClassroomRequest();
     APP.state('thinking');
     try {
@@ -263,13 +331,10 @@
       classroom.materialsFull = pack.materialsFull;
       classroom.works = pack.works;
       history = [];
-      await say(
-        'Loaded SAMPLE demo class only — not your real Google Classroom. ' +
-        'Say assignment mode for sample homework, or open Google Classroom for your real one.'
-      );
+      await say('Demo class loaded. Ready when you are.');
     } catch (_) {
       EARCON.error();
-      await say('Could not load demo class data.');
+      await say('Could not load demo class.');
     }
   }
 

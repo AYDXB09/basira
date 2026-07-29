@@ -1,56 +1,94 @@
 # Basira — hands-free voice tutor for blind learners
 
-Pure black voice UI (REPLICATE-style orb). Opens as a conversation: speaks on load, always listens, interrupt by talking. Built for the MBZUAI-style accessibility hackathon track.
+**Live (UI):** https://aydxb09.github.io/basira/  
+**Repo:** https://github.com/AYDXB09/basira  
 
-## Live demo (GitHub Pages)
+Voice-first study companion: GPT Live audio (`gpt-audio-mini`), captions from the same transcript stream, camera/upload, classroom agent via **Chrome extension**.
 
-After Pages is enabled (this push configures it):
+---
 
-**https://aydxb09.github.io/basira/**
+## Can my teammates just use GitHub Pages + the extension?
 
-### Will it fully work on GitHub Pages?
+| Feature | GitHub Pages only | Pages **+ extension** **+ local bridge** | Full local (`START.bat`) |
+|---|---|---|---|
+| Orb + voice chat (GPT Live) | ✅ (needs OpenRouter key) | ✅ | ✅ |
+| Captions | ✅ | ✅ | ✅ |
+| Camera / upload | ✅ | ✅ | ✅ |
+| **Read THEIR Google Classroom** | ❌ | ✅ | ✅ |
+| Neural edge-tts fallback | ❌ (browser voice backup) | ✅ via bridge | ✅ |
 
-| Feature | On Pages (static HTTPS) | Local + `START.bat` / bridge |
-|---|---|---|
-| Orb + UI | Yes | Yes |
-| Mic + Web Speech (Chrome) | Yes (HTTPS) — allow mic once | Yes |
-| Camera | Yes | Yes |
-| Upload files → teach | Yes (needs OpenRouter key) | Yes |
-| Free conversation / quiz / pedagogy | Yes (needs OpenRouter key) | Yes |
-| Google Classroom sandbox data | Yes (`data/classroom.json`) | Yes (bridge or static) |
-| Neural Emma/Ava TTS (edge-tts) | **No** — falls back to **browser voice** | **Yes** (`bridge/bridge.py`) |
-| Real Google Classroom OAuth | No (sandbox fixture only) | No (same; OAuth is future) |
+**Why Classroom needs the bridge:**  
+The extension talks to `http://127.0.0.1:8790` on **that person’s machine**. A static GitHub Pages site cannot receive data from someone else’s Chrome. So:
 
-**You must set an OpenRouter key in the browser** (key is **not** in the public repo):
+- **Quick voice-only test** → open Pages, paste OpenRouter key, talk.  
+- **Classroom test** → each person runs the **bridge** + installs the **extension** (1–2 minutes). They can still open the **Pages** UI or local `localhost:8124`.
 
-```js
-localStorage.setItem('basira.openRouterKey', 'sk-or-v1-...');
-location.reload();
-```
+They do **not** need Cursor or to understand the whole repo — just Pages (or local server) + bridge + extension.
 
-Local full quality: create `js/config.local.js` (gitignored) with  
-`window.B_CONFIG.openRouterKey = 'sk-or-v1-...';` then double-click `START.bat`.
+---
 
-## Voice commands
+## Teammate setup (recommended for full demo)
 
-- `connect my classroom` · `classroom mode` · `end class`
-- `quiz mode` · `assignment mode`
-- `change voice` · `repeat` · `stop` · `what can you do`
-- free questions any time; barge-in by speaking
+### A. Voice only (30 seconds)
+1. Open https://aydxb09.github.io/basira/
+2. Paste OpenRouter key in the box → Save  
+3. Allow mic → talk  
 
-## Pedagogy sources
+### B. Voice + Google Classroom (what the demo needs)
+1. **Clone or download** this repo (Code → Download ZIP).  
+2. Install Python 3 + deps once:
+   ```bat
+   pip install edge-tts playwright
+   python -m playwright install chromium
+   ```
+3. Double-click **`START.bat`** (starts bridge + web server).  
+   - Or only: `python bridge\bridge.py` and open **Pages** for the UI.
+4. **Install the extension** (see below).  
+5. Say: *“connect my classroom”*.
 
-Research-backed rules in `js/pedagogy.js`. Citations: `data/SOURCES.md`.
+### Install the Chrome extension (required for Classroom)
+Folder in repo: **`extension/`**
 
-## Local run
+1. Chrome → `chrome://extensions`  
+2. **Developer mode** ON  
+3. **Load unpacked** → select the `extension` folder inside this repo  
+4. Pin **Basira Classroom Bridge**  
+5. Click icon → should say **bridge online** (bridge must be running)
 
-```bat
-START.bat
-```
+Full notes: [`extension/README.md`](extension/README.md)
 
-Or: `python bridge/bridge.py` + `python -m http.server 8124` → http://localhost:8124
+---
+
+## What “connect my classroom” does
+1. Basira asks the local bridge for a live scrape.  
+2. Bridge asks the **extension** (running in *your* Chrome, *your* login, open tabs OK).  
+3. Extension opens/uses Classroom and sends class text back.  
+4. GPT Live summarizes audibly + captions.
+
+No need to close all tabs. No need for remote-debugging Chrome (that path is optional fallback).
+
+---
+
+## Voice commands (short)
+- *connect my classroom* / *check my latest assignment*  
+- *open Google Classroom*  
+- *classroom mode* · *end class*  
+- *quiz mode* · *assignment mode* (only with loaded class data)  
+- *upload* · free conversation anytime · interrupt by talking  
+- **D** or **Data** button → export session JSON (for debugging)
+
+---
+
+## Privacy
+- Camera/mic processed in-browser where possible.  
+- OpenRouter receives conversation text (and audio for GPT Live).  
+- Extension only activates Classroom scrape when you ask.  
+- API key stays in browser `localStorage` / `js/config.local.js` (gitignored) — **never commit keys**.
+
+---
 
 ## Stack
-
-- Browser: Web Speech STT, canvas camera, multimodal chat via OpenRouter (`qwen/qwen3.7-plus`)
-- Optional bridge: Microsoft Edge neural TTS + Classroom JSON API
+- **Chat+voice:** `openai/gpt-audio-mini` (stream, audio+transcript) via OpenRouter  
+- **Fallback text:** Qwen via OpenRouter + edge-tts / system voice  
+- **Classroom:** Chrome extension → local bridge · Playwright fallback  
+- **Telemetry:** `js/telemetry.js` session export  
