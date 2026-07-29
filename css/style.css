@@ -256,3 +256,16 @@ body {
 #keygate.open, #keygate:not([hidden]) { display: flex !important; }
 .kg-err { color: #f87171; font-size: 13px; min-height: 18px; margin: 0; }
 #kgInput { font-family: ui-monospace, Consolas, monospace; letter-spacing: 0.3px; }
+
+#keygate.open, #keygate:not([hidden]) {
+  display: flex !important;
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(0,0,0,0.9);
+  align-items: center; justify-content: center;
+}
+.kg-card a { color: #a78bfa; }
+.kg-link {
+  background: none; border: none; color: rgba(255,255,255,0.4);
+  font-size: 12px; cursor: pointer; text-decoration: underline; margin-top: 4px;
+}
+.kg-link:hover { color: #fff; }

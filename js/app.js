@@ -128,25 +128,62 @@
   window.addEventListener('load', () => {
     state('off');
 
+    // If no key yet, show the paste box immediately (critical for GitHub Pages teammates)
+    try {
+      const k = localStorage.getItem('basira.openRouterKey');
+      if (k) window.B_CONFIG.openRouterKey = k;
+    } catch (_) {}
+    if (!window.B_CONFIG.openRouterKey) {
+      showKeyGate('');
+      caption('assistant', 'Paste your OpenRouter API key, then press Save & start.');
+    }
+
     // wire Save FIRST so it always works even if boot path is slow
     const saveBtn = document.getElementById('kgSave');
     const input = document.getElementById('kgInput');
     saveBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); saveKey(); });
-    // also pointerdown so nothing steals the click
     saveBtn.addEventListener('pointerdown', (e) => { e.stopPropagation(); });
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); saveKey(); }
     });
-    // clicks inside the gate must not count as "wake" gestures only
     document.getElementById('keygate').addEventListener('pointerdown', (e) => e.stopPropagation());
 
-    // ZERO-TOUCH boot
+    const clearBtn = document.getElementById('kgClear');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        try { localStorage.removeItem('basira.openRouterKey'); } catch (_) {}
+        window.B_CONFIG.openRouterKey = '';
+        booted = false;
+        input.value = '';
+        showKeyGate('Key cleared. Paste a new one.');
+      });
+    }
+
+    // Key button in the bar — always open the paste box
+    const btnKey = document.getElementById('btnKey');
+    if (btnKey) {
+      btnKey.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        booted = false;
+        try {
+          const k = localStorage.getItem('basira.openRouterKey') || '';
+          input.value = k;
+        } catch (_) {}
+        showKeyGate('');
+        setTimeout(() => input.focus(), 50);
+      });
+    }
+
+    // ZERO-TOUCH boot (only when a key already exists)
     const probe = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=');
     probe.play().then(() => tryBoot()).catch(() => {
-      document.getElementById('statusText').textContent = 'tap or press any key';
-      caption('assistant', 'Tap anywhere or press any key once to wake me.');
+      if (window.B_CONFIG.openRouterKey) {
+        document.getElementById('statusText').textContent = 'tap or press any key';
+        caption('assistant', 'Tap anywhere or press any key once to wake me.');
+      }
       const wake = (e) => {
-        // never treat interactions inside the key gate as "just wake"
         if (e && e.target && e.target.closest && e.target.closest('#keygate')) return;
         tryBoot();
       };
@@ -165,7 +202,9 @@
     const btnData = document.getElementById('btnData');
     if (btnData) btnData.addEventListener('pointerdown', () => TELEM.download());
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'd' || e.key === 'D') { if (!/INPUT|TEXTAREA/.test(document.activeElement?.tagName || '')) TELEM.download(); }
+      if (e.key === 'd' || e.key === 'D') {
+        if (!/INPUT|TEXTAREA/.test(document.activeElement?.tagName || '')) TELEM.download();
+      }
     });
   });
 

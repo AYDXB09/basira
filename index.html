@@ -67,35 +67,42 @@
       </button>
       <span>Data</span>
     </div>
+    <div class="baction">
+      <button class="bbtn" id="btnKey" aria-label="API key">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M12 15h8m-2-3 3 3-3 3"/></svg>
+      </button>
+      <span>Key</span>
+    </div>
   </footer>
 
-  <!-- KEY GATE: shown only when no OpenRouter key is saved -->
+  <!-- KEY GATE: paste YOUR OpenRouter key (stored only in this browser) -->
   <div id="keygate" hidden>
     <div class="kg-card" onclick="event.stopPropagation()">
-      <h2>One-time setup</h2>
-      <p>Paste your OpenRouter API key. It is stored only in this browser.</p>
-      <input id="kgInput" type="text" placeholder="sk-or-v1-…" autocomplete="off" spellcheck="false">
+      <h2>Enter OpenRouter API key</h2>
+      <p>Paste <b>your own</b> key to use Basira. It stays in this browser only — not uploaded to our server.</p>
+      <input id="kgInput" type="text" placeholder="sk-or-v1-…" autocomplete="off" spellcheck="false" inputmode="text">
       <p id="kgErr" class="kg-err" hidden></p>
       <button id="kgSave" type="button">Save & start</button>
-      <p class="kg-hint">Get a key at openrouter.ai/keys</p>
+      <p class="kg-hint">Free key: <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a></p>
+      <button id="kgClear" type="button" class="kg-link">Clear saved key</button>
     </div>
   </div>
 
   <input type="file" id="fileInput" multiple
          accept="video/*,image/*,.txt,.md,.srt,.vtt,.pdf,text/plain" hidden>
 
-<script src="js/config.js?v=6"></script>
+<script src="js/config.js?v=7"></script>
 <script src="js/config.local.js" onerror="this.remove()"></script>
-<script src="js/telemetry.js?v=6"></script>
-<script src="js/earcons.js?v=6"></script>
-<script src="js/orb.js?v=6"></script>
-<script src="js/llm.js?v=6"></script>
-<script src="js/pedagogy.js?v=6"></script>
-<script src="js/tts.js?v=6"></script>
-<script src="js/stt.js?v=6"></script>
-<script src="js/ingest.js?v=6"></script>
-<script src="js/content.js?v=6"></script>
-<script src="js/assistant.js?v=6"></script>
-<script src="js/app.js?v=6"></script>
+<script src="js/telemetry.js?v=7"></script>
+<script src="js/earcons.js?v=7"></script>
+<script src="js/orb.js?v=7"></script>
+<script src="js/llm.js?v=7"></script>
+<script src="js/pedagogy.js?v=7"></script>
+<script src="js/tts.js?v=7"></script>
+<script src="js/stt.js?v=7"></script>
+<script src="js/ingest.js?v=7"></script>
+<script src="js/content.js?v=7"></script>
+<script src="js/assistant.js?v=7"></script>
+<script src="js/app.js?v=7"></script>
 </body>
 </html>
