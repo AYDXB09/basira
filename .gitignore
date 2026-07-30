@@ -10,3 +10,5 @@ Thumbs.db
 .env
 
 scripts/qa-report.json
+
+scripts/speed-report.json

@@ -11,8 +11,8 @@ window.B_CONFIG = {
     catch (_) { return ''; }
   })(),
   models: {
-    chat: 'qwen/qwen3.7-plus',
-    tts:  'openai/gpt-audio-mini'
+    chat: 'openai/gpt-4o-mini',   // fast fallback brain (~1s vs qwen 10-20s)
+    tts:  'openai/gpt-audio-mini' // GPT Live — primary voice path
   },
   bridge: 'http://127.0.0.1:8790',
   voices: [

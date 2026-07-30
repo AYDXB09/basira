@@ -5,10 +5,9 @@
 (function () {
   const C = window.B_CONFIG;
   const FALLBACKS = [
-    null, // first try primary
-    'qwen/qwen3-32b',
-    'qwen/qwen3-8b',
-    'openai/gpt-4o-mini'
+    null, // first try primary (config.models.chat)
+    'openai/gpt-4o',
+    'qwen/qwen3-8b'
   ];
 
   function extractText(content) {
