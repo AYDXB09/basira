@@ -265,8 +265,9 @@ console.log('\n[B] Module boot & exports');
     assert(S, 'ASSIST.enableDemoMode', typeof sb.ASSIST.enableDemoMode === 'function');
     assert(S, 'PED.systemPrompt', typeof sb.PED.systemPrompt === 'function');
     assert(S, 'PED.setCustomTemplate', typeof sb.PED.setCustomTemplate === 'function');
-    assert(S, 'PED.getTemplate has {{LANG}} or language rules',
-      /\{\{LANG\}\}|Reply in/i.test(sb.PED.getTemplate()));
+    sb.PED.saveProfile({ lang: 'ar' });
+    assert(S, 'PED.systemPrompt injects active language',
+      /Arabic/i.test(sb.PED.systemPrompt()));
   } catch (e) {
     fail(S, 'module load', e.stack || e.message);
   }
@@ -317,8 +318,8 @@ console.log('\n[D] System prompt view/edit');
   const P = sb.PED;
   const def = P.defaultTemplate();
   assert(S, 'default template non-empty', def.length > 200);
-  assert(S, 'default forbids blind lectures', /NEVER lecture about blindness/i.test(def));
-  assert(S, 'default teaching rules present', /PART-TO-WHOLE|CONCRETENESS/i.test(def));
+  assert(S, 'default uses Accessibility Educator role', /expert Accessibility Educator/i.test(def));
+  assert(S, 'default teaching rules present', /SPATIAL & TACTILE|MULTISENSORY ANALOGIES/i.test(def));
   P.setCustomTemplate('You are TEST BOT. Reply in {{LANG}} only. Be brief.');
   assert(S, 'custom saved flag', P.hasCustomPrompt === true);
   assert(S, 'getTemplate returns custom', /TEST BOT/.test(P.getTemplate()));
@@ -329,12 +330,11 @@ console.log('\n[D] System prompt view/edit');
   assert(S, 'custom has no default blindness block unless kept', true);
   P.resetCustomTemplate();
   assert(S, 'reset clears custom', P.hasCustomPrompt === false);
-  assert(S, 'reset restores NEVER lecture rule',
-    /NEVER lecture about blindness/i.test(P.systemPrompt()));
-  // default must not say "blind student" teaching frame
+  assert(S, 'reset restores Accessibility Educator role',
+    /expert Accessibility Educator/i.test(P.systemPrompt()));
   const sp = P.systemPrompt();
-  assert(S, 'prompt teaches subject not disability theory to student',
-    /Teach the math|TEACH THE SUBJECT|never meta/i.test(sp) || /NEVER/i.test(sp));
+  assert(S, 'prompt teaches through non-visual mental models',
+    /spatial & tactile mental models|non-visual phenomena/i.test(sp));
 }
 
 // ========== E. ROUTER — VOICE COMMANDS ==========
@@ -684,8 +684,8 @@ console.log('\n[I] Negative & safety cases');
   loadJs(sb, 'js/pedagogy.js');
   loadJs(sb, 'js/assistant.js');
   const sp = sb.PED.systemPrompt();
-  assert(S, 'prompt bans pity', /NEVER moralize or pity/i.test(sp));
-  assert(S, 'prompt bans as a blind student', /NEVER say "as a blind student"/i.test(sp));
+  assert(S, 'prompt bans color-based teaching', /Never use colors/i.test(sp));
+  assert(S, 'prompt bans visual action verbs', /Never use visual action verbs/i.test(sp));
 
   // empty inject
   await sb.ASSIST.injectText('   ');

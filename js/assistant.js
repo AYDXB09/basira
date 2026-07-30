@@ -24,6 +24,7 @@
   let history = [];            // conversation [{role, content}]
   let mode = 'idle';           // idle | classroom | quiz | assignment | revision
   let busy = false;
+  let muted = false;
   let demoMode = false;
 
   let classroom = null;        // pulled classroom summary/materials/coursework
@@ -35,6 +36,7 @@
   let assignmentAnswers = [];
 
   let lastSaid = '';           // for "repeat"
+  let lastSpeakEnd = 0;        // echo cooldown after tutor speech
   let pendingUtterances = [];  // queue while busy so turns are never dropped
 
   function studentAddress() {
@@ -84,7 +86,7 @@
     APP.state('listening');
     EARCON.unlock();
     try { startEars(); } catch (e) { console.error('ears', e); }
-    APP.mic('on');
+    APP.mic(muted ? 'muted' : 'on');
     TTS.prewarm();
 
     const intro =
@@ -130,11 +132,14 @@
     APP.state('speaking');
     APP.caption('assistant', text);
     await TTS.speak(text);
-    APP.state(mode === 'classroom' ? 'listening' : (STT.running ? 'listening' : 'idle'));
+    lastSpeakEnd = Date.now();
+    APP.state(mode === 'classroom' && !muted ? 'listening' : (STT.running ? 'listening' : 'idle'));
+    if (muted) APP.mic('muted');
   }
 
   /* ==================== ALWAYS-ON EARS + BARGE-IN ==================== */
   function startEars() {
+    if (muted) return;
     if (!STT.supported()) { APP.caption('assistant', 'Voice needs Chrome.'); return; }
     const sttLang = (window.PED && PED.langMeta().stt) || 'en-US';
     STT.startAlways({
@@ -155,7 +160,11 @@
       },
       onError: (e) => {
         if (e === 'mic-denied') say('The microphone is blocked. Click the mic icon in the address bar, allow it, and reload me.');
-        if (e === 'network') say('Speech recognition lost its connection. Check the internet for a moment.');
+        // Transient network errors retry silently; speaking the error would
+        // feed it back into the open microphone.
+      },
+      onStatus: (status) => {
+        if (!muted) APP.mic(status === 'reconnecting' ? 'reconnecting' : 'on');
       }
     }, { lang: sttLang });
     APP.state('listening');
@@ -165,13 +174,30 @@
 
   /** echo filter: does this transcript look like what WE are saying right now? */
   function isEcho(t) {
-    if (!TTS.speaking && !TTS.currentText) return false;
-    if (!TTS.speaking) return false;
-    const said = new Set(TTS.currentText.toLowerCase().replace(/[^\w\s']/g, '').split(/\s+/));
-    const words = t.toLowerCase().replace(/[^\w\s']/g, '').split(/\s+/).filter(Boolean);
+    if (lastSpeakEnd && Date.now() - lastSpeakEnd < 800) return true;
+    const words = t.toLowerCase().split(/[^\p{L}\p{N}']+/u).filter(Boolean);
     if (!words.length) return true;
-    const hits = words.filter(w => said.has(w)).length;
-    return hits / words.length > 0.6;
+    const candidates = [TTS.currentText, lastSaid].filter(Boolean);
+    for (const candidate of candidates) {
+      const said = new Set(candidate.toLowerCase().split(/[^\p{L}\p{N}']+/u).filter(Boolean));
+      if (said.size < 2) continue;
+      const hits = words.filter(word => said.has(word)).length;
+      if (hits / words.length > 0.4) return true;
+    }
+    return false;
+  }
+
+  function toggleMute() {
+    muted = !muted;
+    if (muted) {
+      STT.stopAlways();
+      APP.state('idle');
+      APP.mic('muted');
+    } else {
+      startEars();
+      APP.mic('on');
+    }
+    return muted;
   }
 
   /* ============================ ROUTER ============================ */
@@ -1041,7 +1067,8 @@ Exactly 4 open-ended questions, easier to harder. Blind-friendly (no color/appea
   }
 
   window.ASSIST = {
-    boot, sayHello, onFiles, route, closeCamera, enableDemoMode, setLanguage, injectText,
+    boot, sayHello, onFiles, route, closeCamera, enableDemoMode, setLanguage, injectText, toggleMute,
+    get muted() { return muted; },
     toggleCamera: async () => {
       if (camStream) snapAndExplain('The student pressed the camera button.');
       else {

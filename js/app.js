@@ -27,7 +27,10 @@
   function mic(s) {
     const dot = document.getElementById('micdot');
     if (dot) dot.className = s;
-    const label = { waiting: 'allow the mic…', on: 'listening', blocked: 'mic blocked' }[s];
+    const label = {
+      waiting: 'allow the mic…', reconnecting: 'reconnecting…',
+      on: 'listening', muted: 'mic muted', blocked: 'mic blocked'
+    }[s];
     if (label) {
       const st = document.getElementById('statusText');
       if (st) st.textContent = label;
@@ -257,6 +260,20 @@
         } catch (_) {}
         showKeyGate('');
         setTimeout(() => { if (input) input.focus(); }, 50);
+      });
+    }
+
+    const btnMute = document.getElementById('btnMute');
+    const muteLabel = document.getElementById('muteLabel');
+    if (btnMute && muteLabel) {
+      btnMute.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const muted = ASSIST.toggleMute();
+        btnMute.classList.toggle('muted', muted);
+        btnMute.setAttribute('aria-pressed', String(muted));
+        btnMute.setAttribute('aria-label', muted ? 'Unmute microphone' : 'Mute microphone');
+        muteLabel.textContent = muted ? 'Unmute mic' : 'Mute mic';
       });
     }
 

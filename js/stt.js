@@ -1,9 +1,5 @@
 /* ============================================================================
- * stt.js — ALWAYS-ON listening (Web Speech API, Chrome).
- * One continuous recognizer that never sleeps:
- *   STT.startAlways({ onUtterance(text), onInterim(text) })
- * Auto-restarts when Chrome kills the session. The assistant layer decides
- * what is user speech vs. the tutor's own echo vs. classroom audio.
+ * stt.js — resilient always-on Web Speech recognition for Chrome/Edge.
  * ========================================================================== */
 (function () {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -11,52 +7,115 @@
   let want = false;
   let handlers = null;
   let lang = 'en-US';
-  let heardAnything = false;    // did ANY speech event ever fire?
+  let heardAnything = false;
   let lastError = null;
+  let errCount = 0;
+  let restartTimer = null;
+  let generation = 0;
 
   function supported() { return !!SR; }
 
-  function spin() {
+  function clearRestart() {
+    if (restartTimer) clearTimeout(restartTimer);
+    restartTimer = null;
+  }
+
+  function closeRecognizer() {
+    generation++;
+    if (!rec) return;
+    try {
+      rec.onend = null;
+      rec.onerror = null;
+      rec.onresult = null;
+      rec.abort();
+    } catch (_) {}
+    rec = null;
+  }
+
+  function restart(delay) {
+    clearRestart();
+    closeRecognizer();
     if (!want) return;
-    rec = new SR();
-    rec.lang = lang;
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.maxAlternatives = 1;
+    restartTimer = setTimeout(() => {
+      restartTimer = null;
+      spin();
+    }, delay);
+  }
 
-    rec.onaudiostart = () => { console.log('[stt] audio start'); };
-    rec.onspeechstart = () => { heardAnything = true; console.log('[stt] speech detected'); };
+  function setLang(code) {
+    const next = code || 'en-US';
+    if (lang === next) return;
+    lang = next;
+    if (want) restart(400);
+  }
 
-    rec.onresult = (e) => {
+  function spin() {
+    if (!want || !SR) return;
+    clearRestart();
+    closeRecognizer();
+    const token = generation;
+    const next = new SR();
+    rec = next;
+    next.lang = lang;
+    next.continuous = true;
+    next.interimResults = true;
+    next.maxAlternatives = 1;
+
+    next.onaudiostart = () => {
+      if (token !== generation) return;
+      errCount = 0;
+      lastError = null;
+      if (handlers?.onStatus) handlers.onStatus('listening');
+    };
+    next.onspeechstart = () => {
+      if (token !== generation) return;
       heardAnything = true;
+    };
+    next.onresult = (e) => {
+      if (token !== generation) return;
+      heardAnything = true;
+      errCount = 0;
       let interim = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript;
+        const text = e.results[i][0].transcript;
         if (e.results[i].isFinal) {
-          const fin = t.trim();
-          console.log('[stt] final:', fin);
-          if (fin && handlers?.onUtterance) handlers.onUtterance(fin);
-        } else interim += t;
+          const finalText = text.trim();
+          if (finalText && handlers?.onUtterance) handlers.onUtterance(finalText);
+        } else {
+          interim += text;
+        }
       }
       if (interim.trim() && handlers?.onInterim) handlers.onInterim(interim.trim());
     };
-    rec.onend = () => { if (want) setTimeout(spin, 200); };
-    rec.onerror = (e) => {
+    next.onend = () => {
+      if (token !== generation) return;
+      rec = null;
+      const wait = Math.min(200 * Math.pow(2, errCount), 2500);
+      if (want) {
+        clearRestart();
+        restartTimer = setTimeout(spin, wait);
+      }
+    };
+    next.onerror = (e) => {
+      if (token !== generation) return;
       lastError = e.error;
-      if (e.error !== 'no-speech') console.warn('[stt] error:', e.error);
+      if (e.error === 'network') errCount++;
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
         want = false;
+        clearRestart();
         if (handlers?.onError) handlers.onError('mic-denied');
+      } else if (e.error === 'network') {
+        if (handlers?.onStatus) handlers.onStatus('reconnecting');
+        if (handlers?.onError) handlers.onError('network');
       }
-      if (e.error === 'network' && handlers?.onError) handlers.onError('network');
-      // everything else: onend fires next and we restart
     };
-    try { rec.start(); } catch (_) { /* already running */ }
+    try { next.start(); }
+    catch (_) { restart(500); }
   }
 
-  function startAlways(h, opts = {}) {
-    handlers = h;
-    lang = opts.lang || lang || 'en-US';
+  function startAlways(nextHandlers, opts = {}) {
+    handlers = nextHandlers;
+    if (opts.lang) lang = opts.lang;
     if (want) return true;
     if (!SR) return false;
     want = true;
@@ -64,26 +123,17 @@
     return true;
   }
 
-  /** Switch recognition language; restarts if already running */
-  function setLang(code) {
-    const next = code || 'en-US';
-    if (next === lang) return;
-    lang = next;
-    if (want) {
-      // soft restart
-      if (rec) { try { rec.onend = null; rec.stop(); } catch (_) {} rec = null; }
-      setTimeout(spin, 150);
-    }
-  }
-
   function stopAlways() {
     want = false;
-    if (rec) { try { rec.onend = null; rec.stop(); } catch (_) {} rec = null; }
+    clearRestart();
+    closeRecognizer();
   }
 
-  window.STT = { supported, startAlways, stopAlways, setLang,
+  window.STT = {
+    supported, startAlways, stopAlways, setLang,
     get running() { return want; },
     get heardAnything() { return heardAnything; },
     get lastError() { return lastError; },
-    get lang() { return lang; } };
+    get lang() { return lang; }
+  };
 })();

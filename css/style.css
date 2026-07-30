@@ -43,6 +43,8 @@ body {
 }
 #micdot.on      { background: #34d399; box-shadow: 0 0 8px rgba(52,211,153,0.7); }
 #micdot.waiting { background: #fbbf24; box-shadow: 0 0 8px rgba(251,191,36,0.6); animation: blink 1s infinite; }
+#micdot.reconnecting { background: #fbbf24; box-shadow: 0 0 8px rgba(251,191,36,0.6); animation: blink 1s infinite; }
+#micdot.muted   { background: #f97316; box-shadow: 0 0 8px rgba(249,115,22,0.55); }
 #micdot.blocked { background: #ef4444; box-shadow: 0 0 8px rgba(239,68,68,0.6); }
 @keyframes blink { 50% { opacity: 0.3; } }
 
@@ -185,7 +187,8 @@ body {
 #bar {
   position: fixed; left: 0; right: 0; bottom: 0;
   height: 108px; z-index: 5;
-  display: flex; align-items: flex-start; justify-content: center; gap: 44px;
+  display: flex; align-items: flex-start; justify-content: center;
+  gap: clamp(8px, 2.2vw, 28px);
   padding-top: 6px;
 }
 .baction {
@@ -211,6 +214,18 @@ body {
   background: rgba(52, 211, 153, 0.16);
   border-color: rgba(52, 211, 153, 0.45);
   color: #fff;
+}
+.bbtn.muted {
+  background: rgba(249,115,22,0.18);
+  border-color: rgba(249,115,22,0.55);
+  color: #fff;
+}
+
+@media (max-width: 600px) {
+  #bar { gap: 6px; height: 96px; }
+  .bbtn { width: 44px; height: 44px; }
+  .baction { gap: 5px; }
+  .baction span { font-size: 8.5px; letter-spacing: 0.45px; }
 }
 
 /* ================= camera dock ================= */
