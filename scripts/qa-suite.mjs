@@ -239,6 +239,7 @@ console.log('\n[A] Syntax & UI contract');
   assert(S, 'has prompt button', /id="btnPrompt"/.test(html));
   assert(S, 'has prompt gate', /id="promptGate"/.test(html));
   assert(S, 'has demo button', /id="btnDemo"/.test(html));
+  assert(S, 'demo is clearly labeled fictional sample', /Toggle fictional sample demo/.test(html) && />Sample</.test(html));
   assert(S, 'cache bust v14+', /v=1[4-9]|v=[2-9]\d/.test(html) || /v=14/.test(html));
   assert(S, 'config still points GPT Live model',
     /gpt-audio-mini/.test(read('js/config.js')));
@@ -318,8 +319,8 @@ console.log('\n[D] System prompt view/edit');
   const P = sb.PED;
   const def = P.defaultTemplate();
   assert(S, 'default template non-empty', def.length > 200);
-  assert(S, 'default uses Accessibility Educator role', /expert Accessibility Educator/i.test(def));
-  assert(S, 'default teaching rules present', /SPATIAL & TACTILE|MULTISENSORY ANALOGIES/i.test(def));
+  assert(S, 'default uses Socratic Accessibility Educator role', /expert Socratic Accessibility Educator/i.test(def));
+  assert(S, 'default Socratic teaching rules present', /SOCRATIC GUIDED DISCOVERY|Socratic Question/i.test(def));
   P.setCustomTemplate('You are TEST BOT. Reply in {{LANG}} only. Be brief.');
   assert(S, 'custom saved flag', P.hasCustomPrompt === true);
   assert(S, 'getTemplate returns custom', /TEST BOT/.test(P.getTemplate()));
@@ -330,11 +331,11 @@ console.log('\n[D] System prompt view/edit');
   assert(S, 'custom has no default blindness block unless kept', true);
   P.resetCustomTemplate();
   assert(S, 'reset clears custom', P.hasCustomPrompt === false);
-  assert(S, 'reset restores Accessibility Educator role',
-    /expert Accessibility Educator/i.test(P.systemPrompt()));
+  assert(S, 'reset restores Socratic Accessibility Educator role',
+    /expert Socratic Accessibility Educator/i.test(P.systemPrompt()));
   const sp = P.systemPrompt();
-  assert(S, 'prompt teaches through non-visual mental models',
-    /spatial & tactile mental models|non-visual phenomena/i.test(sp));
+  assert(S, 'prompt teaches through guided non-visual models',
+    /guided discovery|physical equivalents|spatial & multisensory modeling/i.test(sp));
 }
 
 // ========== E. ROUTER — VOICE COMMANDS ==========

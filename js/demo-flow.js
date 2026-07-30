@@ -3,10 +3,16 @@
  * ========================================================================== */
 (function () {
   let demoOn = false;
+  let memoryBeforeDemo = null;
+  let profileBeforeDemo = null;
 
   function isOn() { return demoOn; }
 
   function activate() {
+    if (!demoOn) {
+      try { memoryBeforeDemo = window.MEM ? MEM.all() : null; } catch (_) { memoryBeforeDemo = null; }
+      try { profileBeforeDemo = window.PED ? Object.assign({}, PED.profile) : null; } catch (_) { profileBeforeDemo = null; }
+    }
     demoOn = true;
     const P = window.DEMO_PACK;
     if (!P) return null;
@@ -53,6 +59,10 @@
 
   function deactivate() {
     demoOn = false;
+    try { if (window.MEM && memoryBeforeDemo) MEM.save(memoryBeforeDemo); } catch (_) {}
+    try { if (window.PED && profileBeforeDemo) PED.saveProfile(profileBeforeDemo); } catch (_) {}
+    memoryBeforeDemo = null;
+    profileBeforeDemo = null;
     if (window.BPANEL) BPANEL.hide();
   }
 

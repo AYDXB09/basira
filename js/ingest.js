@@ -1,6 +1,6 @@
 /* ============================================================================
  * ingest.js — turns uploaded files into raw conversation material.
- *   videos → sampled frames (dataURLs) · images → dataURLs · text files → text
+ *   videos → sampled frames · images → dataURLs · text files → text
  * Exposes window.INGEST = { collect }
  * ========================================================================== */
 (function () {

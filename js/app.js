@@ -344,10 +344,15 @@
     if (camClose) camClose.addEventListener('pointerdown', () => ASSIST.closeCamera());
     const btnUpload = document.getElementById('btnUpload');
     if (btnUpload) btnUpload.addEventListener('pointerdown', () => {
-      document.getElementById('fileInput').click();
+      const input = document.getElementById('fileInput');
+      input.value = '';
+      input.click();
     });
     const fileInput = document.getElementById('fileInput');
-    if (fileInput) fileInput.addEventListener('change', (e) => ASSIST.onFiles(e.target.files));
+    if (fileInput) fileInput.addEventListener('change', async (e) => {
+      await ASSIST.onFiles(e.target.files);
+      e.target.value = '';
+    });
 
     const btnDemo = document.getElementById('btnDemo');
     if (btnDemo) {

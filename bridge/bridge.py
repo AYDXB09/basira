@@ -11,6 +11,7 @@
 import asyncio
 import json
 import os
+
 import threading
 import time
 import uuid
@@ -31,6 +32,7 @@ _pending = []       # job ids waiting for extension
 _results = {}       # id -> result
 _progress = {}      # id -> {status, url, screenshot, done}
 _extension_state = {"last_seen": 0.0}
+
 
 
 def load_classroom() -> dict:

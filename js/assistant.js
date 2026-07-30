@@ -28,6 +28,8 @@
   let demoMode = false;
 
   let classroom = null;        // pulled classroom summary/materials/coursework
+  let classroomBeforeDemo = null;
+  let uploadedMaterials = [];  // local files kept available for follow-up turns
   let classTranscript = '';    // what the teacher said (classroom mode)
   let snapTimer = null;
 
@@ -294,8 +296,10 @@
   }
 
   async function enableDemoMode() {
+    if (demoMode) return disableDemoMode(true);
     const pack = window.DEMO && DEMO.activate();
     if (!pack) return;
+    classroomBeforeDemo = classroom;
     demoMode = true;
     classroom = pack;
     history = [];
@@ -303,13 +307,26 @@
       MEM.add('name', pack.student.name);
       MEM.add('grade', String(pack.student.grade));
     }
-    // Silent — no TTS announcement for prototype/demo switch
     if (document.getElementById('statusText')) {
-      document.getElementById('statusText').textContent = 'demo · ' + (pack.student?.name || 'ready');
+      document.getElementById('statusText').textContent = 'sample demo · fictional data';
     }
     if (document.getElementById('btnDemo')) {
       document.getElementById('btnDemo').classList.add('on');
     }
+    return say('Sample demo loaded. This uses fictional Grade 5 science data, not your real Classroom. Press Sample again to exit.');
+  }
+
+  async function disableDemoMode(announce) {
+    demoMode = false;
+    try { if (window.DEMO) DEMO.deactivate(); } catch (_) {}
+    if (classroom?.source === 'demo') classroom = classroomBeforeDemo;
+    classroomBeforeDemo = null;
+    history = [];
+    const button = document.getElementById('btnDemo');
+    if (button) button.classList.remove('on');
+    const status = document.getElementById('statusText');
+    if (status) status.textContent = STT.running ? 'listening' : 'ready';
+    if (announce) return say('Sample demo off. Real Classroom data will be used.');
   }
 
   /* ==================== GOOGLE CLASSROOM ==================== */
@@ -379,7 +396,32 @@
     }
   }
 
+  function badAssignmentTitle(title) {
+    return !title || /google account|help|screen reader|skip to|main content|class comments|private comments|your work|assigned/i.test(title);
+  }
+
+  async function analyzeClassroomScreenshot(screenshot) {
+    if (!screenshot) return null;
+    try {
+      return await LLM.chatJSON([
+        {
+          role: 'system',
+          content: `Extract factual assignment data from this Google Classroom screenshot.
+Return JSON exactly: {"title":"","instructions":"","due":"","attachments":[]}.
+Ignore navigation, account names, comments panels, status labels, and buttons.
+Only list an attachment when it is visibly attached in the assignment. Never invent one.`
+        },
+        { role: 'user', content: [
+          { type: 'text', text: 'Read the assignment currently open in Classroom.' },
+          { type: 'image_url', image_url: { url: screenshot } }
+        ] }
+      ], { maxTokens: 450, timeoutMs: 25000, preserveImages: true });
+    } catch (_) { return null; }
+  }
+
   async function handleClassroomRequest() {
+    // A real Classroom request must never be mixed with fictional demo data.
+    if (demoMode) await disableDemoMode(false);
     APP.state('thinking');
     if (window.TELEM) TELEM.logEvent('classroom-live-start', {});
 
@@ -511,8 +553,27 @@
       return;
     }
 
-    const mats = data.materials || [];
-    const works = data.courseWork || data.coursework || [];
+    let mats = data.materials || [];
+    let works = data.courseWork || data.coursework || [];
+    const focusedOnClassroom = !data.focusedUrl || /classroom\.google\.com/i.test(data.focusedUrl);
+    if (focusedOnClassroom && data.screenshot && badAssignmentTitle(works[0]?.title)) {
+      const extracted = await analyzeClassroomScreenshot(data.screenshot);
+      if (extracted?.title && !badAssignmentTitle(extracted.title)) {
+        const details = [extracted.instructions, extracted.due ? 'Due: ' + extracted.due : '']
+          .filter(Boolean).join('\n');
+        works = [{
+          title: extracted.title,
+          due: extracted.due || '',
+          questions: extracted.instructions ? [extracted.instructions] : [],
+          source: 'classroom-screenshot'
+        }];
+        mats = [{
+          title: extracted.title,
+          type: 'classroom-screenshot',
+          text: details || extracted.title
+        }, ...mats];
+      }
+    }
     if (demoMode && DEMO_PACK && (!works.length || !mats.length)) {
       applyDemoClassroomFallback();
       if (data.course) classroom.course = data.course.name || data.course || classroom.course;
@@ -604,6 +665,11 @@
 
   function materialsContext() {
     const parts = [];
+    if (uploadedMaterials.length) {
+      parts.push(uploadedMaterials.map(material =>
+        `UPLOADED FILE "${material.label}":\n${material.text || ''}`
+      ).join('\n\n'));
+    }
     if (classroom?.materialsFull?.length) {
       parts.push(classroom.materialsFull.map(m =>
         `FILE "${m.title}":\n${m.text || m.description || ''}`
@@ -638,9 +704,9 @@
   function contextBlock() {
     const mats = materialsContext();
     if (!mats) {
-      return 'NO CLASS MATERIALS LOADED. Answer general questions only. If they ask about schoolwork, invite them to connect Classroom or turn on demo mode.';
+      return 'NO STUDY MATERIALS LOADED. Answer general questions only.';
     }
-    return 'CLASS MATERIALS (prefer these):\n' + mats.slice(0, 5000);
+    return 'STUDY MATERIALS (prefer these):\n' + mats.slice(0, 7000);
   }
 
   /* ==================== CLASSROOM MODE ==================== */
@@ -1035,7 +1101,7 @@ Exactly 4 open-ended questions, easier to harder. Blind-friendly (no color/appea
           { type: 'text', text: context || 'What is on the screen?' },
           { type: 'image_url', image_url: { url: shot } }
         ] }
-      ], { maxTokens: 350 });
+      ], { maxTokens: 350, preserveImages: true });
       if (quietIfBoring && /NOTHING_NEW/i.test(out)) { APP.state('listening'); return; }
       await say(out);
     } catch (_) {
@@ -1051,14 +1117,15 @@ Exactly 4 open-ended questions, easier to harder. Blind-friendly (no color/appea
     APP.caption('assistant', 'Reading your files…');
     try {
       const material = await INGEST.collect([...files], m => APP.caption('assistant', m));
-      let text = `The student uploaded: ${[...files].map(f => f.name).join(', ')}. Say in one breath what they cover and offer to teach the most important visual part.`;
+      uploadedMaterials = [...uploadedMaterials, ...material.texts].slice(-8);
+      let text = `The learner uploaded: ${[...files].map(f => f.name).join(', ')}. Briefly identify the material, introduce one useful anchor, and end with one guiding question.`;
       material.texts.forEach(x => { text += `\n\n--- ${x.label} ---\n${x.text}`; });
       const parts = material.images.slice(0, 10).map(i => ({ type: 'image_url', image_url: { url: i.data } }));
       history.push({ role: 'user', content: parts.length ? [{ type: 'text', text }, ...parts] : text });
       const out = await LLM.chat([
         { role: 'system', content: PED.systemPrompt() },
         ...history.slice(-6)
-      ], { maxTokens: 400 });
+      ], { maxTokens: 400, preserveImages: parts.length > 0 });
       history.push({ role: 'assistant', content: out });
       await say(out);
     } catch (_) {
@@ -1067,7 +1134,7 @@ Exactly 4 open-ended questions, easier to harder. Blind-friendly (no color/appea
   }
 
   window.ASSIST = {
-    boot, sayHello, onFiles, route, closeCamera, enableDemoMode, setLanguage, injectText, toggleMute,
+    boot, sayHello, onFiles, route, closeCamera, enableDemoMode, disableDemoMode, setLanguage, injectText, toggleMute,
     get muted() { return muted; },
     toggleCamera: async () => {
       if (camStream) snapAndExplain('The student pressed the camera button.');
