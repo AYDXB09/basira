@@ -269,3 +269,42 @@ body {
   font-size: 12px; cursor: pointer; text-decoration: underline; margin-top: 4px;
 }
 .kg-link:hover { color: #fff; }
+
+/* ================= prompt editor (demo) ================= */
+#promptGate {
+  position: fixed; inset: 0; z-index: 90;
+  background: rgba(0,0,0,0.88); backdrop-filter: blur(8px);
+  display: none;
+  align-items: center; justify-content: center;
+  padding: 24px;
+}
+#promptGate.open, #promptGate:not([hidden]) { display: flex !important; }
+.pg-card {
+  background: #101017; border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 18px; padding: 28px 30px; width: min(94vw, 720px);
+  max-height: 90vh;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.pg-card h2 { font-size: 20px; }
+.pg-card p { font-size: 13px; color: rgba(255,255,255,0.55); line-height: 1.45; }
+#pgInput {
+  width: 100%; min-height: 280px; max-height: 52vh;
+  background: #000; color: #e8e8ef;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 12px; padding: 14px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12.5px; line-height: 1.45;
+  resize: vertical; outline: none;
+}
+#pgInput:focus { border-color: #34d399; }
+.pg-note { font-size: 12px !important; min-height: 16px; color: rgba(255,255,255,0.4) !important; }
+.pg-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+#pgSave {
+  background: #34d399; color: #04120c; font-weight: 700; border: none;
+  border-radius: 10px; padding: 11px 18px; font-size: 14px; cursor: pointer;
+}
+.pg-secondary {
+  background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 10px; padding: 11px 16px; font-size: 14px; cursor: pointer;
+}
+.pg-secondary:hover { background: rgba(255,255,255,0.14); }

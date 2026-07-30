@@ -8,3 +8,5 @@ bridge/chrome-profile/
 Thumbs.db
 *.mp3
 .env
+
+scripts/qa-report.json

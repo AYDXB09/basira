@@ -56,7 +56,7 @@
 
   function startAlways(h, opts = {}) {
     handlers = h;
-    lang = opts.lang || 'en-US';
+    lang = opts.lang || lang || 'en-US';
     if (want) return true;
     if (!SR) return false;
     want = true;
@@ -64,13 +64,26 @@
     return true;
   }
 
+  /** Switch recognition language; restarts if already running */
+  function setLang(code) {
+    const next = code || 'en-US';
+    if (next === lang) return;
+    lang = next;
+    if (want) {
+      // soft restart
+      if (rec) { try { rec.onend = null; rec.stop(); } catch (_) {} rec = null; }
+      setTimeout(spin, 150);
+    }
+  }
+
   function stopAlways() {
     want = false;
     if (rec) { try { rec.onend = null; rec.stop(); } catch (_) {} rec = null; }
   }
 
-  window.STT = { supported, startAlways, stopAlways,
+  window.STT = { supported, startAlways, stopAlways, setLang,
     get running() { return want; },
     get heardAnything() { return heardAnything; },
-    get lastError() { return lastError; } };
+    get lastError() { return lastError; },
+    get lang() { return lang; } };
 })();

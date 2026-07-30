@@ -16,16 +16,23 @@ No closing tabs. No remote-debugging restart.
 5. Pin “Basira Classroom Bridge”
 6. Click the icon — should say **bridge online**
 
+## Demo tip
+Keep **Google Classroom open and signed in** in this Chrome profile.  
+Assignment links to **Google Docs** (`docs.google.com/document/...`) will be opened and their body text read into materials (`type: gdoc`).  
+A JPEG screenshot of the active page is included in the scrape result when possible.
+
 ## Use
 In Basira say: **“connect my classroom”** / **“check my latest assignment”**
 
 The extension will:
-- Prefer a Classroom tab you already have open
+- Prefer a Classroom tab you already have open (minimal focus stealing)
 - Or open Classroom in a new tab if needed
-- Scrape courses / classwork text and send it to Basira
+- Scrape courses / classwork text
+- Open linked Google Docs and pull document text (first ~8k chars)
+- Capture a JPEG screenshot and send everything to Basira
 
 ## First-time Google login
-If you’re not signed into Classroom in this Chrome profile, sign جهود in normally, then ask again.
+If you’re not signed into Classroom in this Chrome profile, sign in normally, then ask again.
 
 ## Troubleshooting
 | Popup says | Fix |

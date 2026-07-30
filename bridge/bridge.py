@@ -3,6 +3,7 @@
 #   * Neural TTS                                          GET /tts
 #   * Chrome EXTENSION long-poll                          GET /extension/wait
 #                                                         POST /extension/result
+#                                                         GET /extension/status
 #   * Classroom live (= wait for extension, then CDP)     GET /classroom/live
 #   * Demo sandbox                                        GET /classroom/summary|…
 #   * health                                              GET /ping
@@ -28,6 +29,8 @@ _lock = threading.Lock()
 _jobs = {}          # id -> job dict
 _pending = []       # job ids waiting for extension
 _results = {}       # id -> result
+_progress = {}      # id -> {status, url, screenshot, done}
+_extension_state = {"last_seen": 0.0}
 
 
 def load_classroom() -> dict:
@@ -51,6 +54,12 @@ def create_job(action: str = "scrape-classroom") -> str:
     with _lock:
         _jobs[jid] = {"id": jid, "action": action, "created": time.time()}
         _pending.append(jid)
+        _progress[jid] = {
+            "status": "queued",
+            "url": "https://classroom.google.com/",
+            "screenshot": None,
+            "done": False,
+        }
     return jid
 
 
@@ -62,9 +71,36 @@ def take_job():
         return _jobs.get(jid)
 
 
+def put_progress(jid: str, **kwargs):
+    with _lock:
+        cur = dict(_progress.get(jid) or {})
+        cur.update(kwargs)
+        # keep last screenshot if new one omitted
+        if "screenshot" in kwargs and not kwargs["screenshot"]:
+            cur["screenshot"] = (_progress.get(jid) or {}).get("screenshot")
+        _progress[jid] = cur
+
+
 def put_result(jid: str, result: dict):
     with _lock:
         _results[jid] = result
+        cur = dict(_progress.get(jid) or {})
+        cur["done"] = True
+        cur["result"] = {k: result.get(k) for k in (
+            "ok", "reason", "hint", "mode", "course", "courses",
+            "materials", "courseWork", "rawPreview", "announcements"
+        ) if k in result}
+        if result.get("screenshot"):
+            cur["screenshot"] = result.get("screenshot")
+        if result.get("url"):
+            cur["url"] = result.get("url")
+        cur["status"] = "done" if result.get("ok") else (result.get("reason") or "done")
+        _progress[jid] = cur
+
+
+def get_progress(jid: str):
+    with _lock:
+        return dict(_progress.get(jid) or {"done": True, "status": "unknown"})
 
 
 def wait_result(jid: str, timeout: float = 55.0):
@@ -86,9 +122,12 @@ def classroom_via_extension(timeout: float = 50.0) -> dict:
             "ok": False,
             "reason": "extension-timeout",
             "hint": "Install/enable the Basira extension and keep Chrome open. Popup should show bridge online.",
+            "jobId": jid,
         }
     result.setdefault("mode", "extension")
+    result["jobId"] = jid
     return result
+
 
 
 def classroom_via_playwright() -> dict:
@@ -115,7 +154,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _json(self, obj, code: int = 200):
-        if isinstance(obj, dict) and obj.get("screenshot") and len(str(obj["screenshot"])) > 400_000:
+        # Keep extension JPEG screenshots (quality~50) under ~900KB string length
+        if isinstance(obj, dict) and obj.get("screenshot") and len(str(obj["screenshot"])) > 900_000:
             obj = dict(obj)
             obj["screenshot"] = None
         self._send(code, "application/json", json.dumps(obj).encode())
@@ -139,6 +179,19 @@ class Handler(BaseHTTPRequestHandler):
             put_result(jid, body)
             return self._json({"ok": True})
 
+        if url.path == "/extension/progress":
+            jid = body.get("id")
+            if not jid:
+                return self._json({"ok": False, "error": "missing id"}, 400)
+            put_progress(
+                jid,
+                status=body.get("status"),
+                url=body.get("url"),
+                screenshot=body.get("screenshot"),
+                cursor=body.get("cursor"),
+            )
+            return self._json({"ok": True})
+
         return self._json({"error": "not found"}, 404)
 
     def do_GET(self):
@@ -159,8 +212,21 @@ class Handler(BaseHTTPRequestHandler):
                 print("TTS error:", exc)
                 return self._json({"error": str(exc)}, 500)
 
+        if url.path == "/extension/status":
+            with _lock:
+                pending = len(_pending)
+                last_seen = _extension_state["last_seen"]
+            age = (time.time() - last_seen) if last_seen else None
+            return self._json({
+                "ok": True,
+                "pending": pending,
+                "online": bool(age is not None and age < 32),
+                "lastSeenSeconds": round(age, 1) if age is not None else None,
+            })
+
         # Extension long-poll: holds until a job appears or timeout
         if url.path == "/extension/wait":
+            _extension_state["last_seen"] = time.time()
             timeout = float((q.get("timeout") or ["25"])[0])
             end = time.time() + max(5.0, min(timeout, 28.0))
             while time.time() < end:
@@ -170,6 +236,18 @@ class Handler(BaseHTTPRequestHandler):
                 time.sleep(0.3)
             return self._json({"id": None})
 
+        if url.path == "/classroom/live-start":
+            jid = create_job("scrape-classroom")
+            return self._json({"ok": True, "jobId": jid})
+
+        if url.path == "/extension/progress" or url.path == "/classroom/live-status":
+            jid = (q.get("id") or [""])[0]
+            if not jid:
+                return self._json({"ok": False, "error": "missing id"}, 400)
+            prog = get_progress(jid)
+            # Don't drop screenshots on progress (just shank empty)
+            return self._json({"ok": True, **prog})
+
         if url.path == "/classroom/open":
             try:
                 webbrowser.open(CLASSROOM_URL)
@@ -178,11 +256,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": False, "error": str(exc)}, 500)
 
         if url.path == "/classroom/live":
-            # 1) Extension (user's real Chrome tabs) — preferred
+            # Blocking path (still works). Prefer live-start + progress for UI.
             ext = classroom_via_extension(timeout=45.0)
             if ext.get("ok") or ext.get("reason") == "login-required":
                 return self._json(ext)
-            # 2) Playwright CDP / profile fallback
             pw = classroom_via_playwright()
             if not pw.get("ok") and ext.get("reason"):
                 pw = dict(pw)

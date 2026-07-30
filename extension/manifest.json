@@ -1,11 +1,18 @@
-{
+﻿{
   "manifest_version": 3,
   "name": "Basira Classroom Bridge",
-  "version": "1.0.0",
-  "description": "Lets Basira read Google Classroom in YOUR logged-in Chrome tabs. No closing tabs.",
-  "permissions": ["tabs", "scripting", "storage"],
+  "version": "1.3.0",
+  "description": "Lets Basira read Google Classroom in YOUR logged-in Chrome tabs. Keeps Basira focused — feed shows in the app.",
+  "permissions": [
+    "tabs",
+    "scripting",
+    "storage",
+    "activeTab",
+    "alarms"
+  ],
   "host_permissions": [
     "https://classroom.google.com/*",
+    "https://docs.google.com/*",
     "http://127.0.0.1:8790/*",
     "http://localhost:8790/*"
   ],

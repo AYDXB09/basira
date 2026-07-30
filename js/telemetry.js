@@ -46,6 +46,9 @@
     currentTurn.error = err ? String(err) : null;
     currentTurn.replyDoneMs = Date.now() - T0;
     currentTurn.turnLatencyMs = currentTurn.replyDoneMs - currentTurn.sttDoneAt;
+    currentTurn.responseStartLatencyMs = currentTurn.audioFirstByteMs != null
+      ? currentTurn.audioFirstByteMs - currentTurn.sttDoneAt
+      : null;
     session.turns.push(currentTurn);
     currentTurn = null;
 
@@ -63,6 +66,9 @@
         turns: session.turns.length,
         avgTurnLatencyMs: session.turns.length
           ? Math.round(session.turns.reduce((a, t) => a + (t.turnLatencyMs || 0), 0) / session.turns.length)
+          : null,
+        avgResponseStartMs: session.turns.length
+          ? Math.round(session.turns.reduce((a, t) => a + (t.responseStartLatencyMs || 0), 0) / session.turns.length)
           : null
       }
     };

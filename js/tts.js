@@ -44,23 +44,44 @@
     const gen = ++generation;
     speakingUntil = Infinity;
 
+    // Reinforce language in the last system/user turn
+    const langHint = (window.PED && PED.langMeta && PED.langMeta().gptHint) || 'the student\'s language';
+    const msgs = (messages || []).slice();
+    if (msgs.length && msgs[0].role === 'system') {
+      msgs[0] = {
+        role: 'system',
+        content: String(msgs[0].content || '') +
+          `\n\nSpeak aloud in ${langHint}. Match the student's language exactly. Do not discuss blindness or disability theory.`
+      };
+    }
+
     const body = {
       model: C.models.tts || 'openai/gpt-audio-mini',
       stream: true,
       modalities: ['text', 'audio'],
       audio: { voice: opts.voice || C.ttsVoice || 'nova', format: 'pcm16' },
-      messages,
+      messages: msgs,
       max_tokens: opts.maxTokens || 900
     };
 
-    const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + C.openRouterKey,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(body)
-    });
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), opts.timeoutMs || 28000);
+    let r;
+    try {
+      r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + C.openRouterKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body),
+        signal: ctrl.signal
+      });
+    } catch (e) {
+      clearTimeout(to);
+      throw e;
+    }
+    clearTimeout(to);
     if (!r.ok) throw new Error('http-' + r.status + ' ' + (await r.text().catch(() => '')).slice(0, 160));
 
     const a = actx();
@@ -140,25 +161,37 @@
       if (gen !== generation) return res();
       const synth = window.speechSynthesis;
       synth.cancel();
+      const meta = (window.PED && PED.langMeta && PED.langMeta()) || { tts: 'en-US' };
       const u = new SpeechSynthesisUtterance(text);
-      u.lang = 'en-US'; u.rate = 1.08; u.pitch = 1.0;
+      u.lang = meta.tts || 'en-US';
+      u.rate = 1.05;
+      u.pitch = 1.0;
+      // Wait for voices to load (Chrome bug: getVoices returns [] on first call)
+      const doSpeak = () => {
+        const vs = synth.getVoices();
+        const pfx = (u.lang || 'en').slice(0, 2).toLowerCase();
+        u.voice =
+          vs.find(v => (v.lang || '').toLowerCase() === (u.lang || '').toLowerCase()) ||
+          vs.find(v => (v.lang || '').toLowerCase().startsWith(pfx)) ||
+          vs.find(v => /Samantha|Google US English|Microsoft .*Natural/i.test(v.name)) ||
+          null;
+        sysActive = true;
+        u.onend = () => { sysActive = false; res(); };
+        u.onerror = () => { sysActive = false; res(); };
+        synth.speak(u);
+      };
       const vs = synth.getVoices();
-      u.voice =
-        vs.find(v => /Samantha/i.test(v.name)) ||
-        vs.find(v => /Alex/i.test(v.name)) ||
-        vs.find(v => /Google US English/i.test(v.name)) ||
-        vs.find(v => /Microsoft .*(Aria|Jenny|Guy).*Natural/i.test(v.name)) ||
-        vs.find(v => (v.lang || '').toLowerCase().startsWith('en')) || null;
-      sysActive = true;
-      u.onend = () => { sysActive = false; res(); };
-      u.onerror = () => { sysActive = false; res(); };
-      synth.speak(u);
+      if (vs.length) return doSpeak();
+      synth.onvoiceschanged = () => { synth.onvoiceschanged = null; doSpeak(); };
+      // Timeout: speak without a specific voice if voices never load
+      setTimeout(() => { if (!sysActive) doSpeak(); }, 1500);
     });
   }
 
   async function fetchEdge(text) {
-    const voice = (C.voices && C.voices[voiceIdx % C.voices.length]) || 'en-US-EmmaMultilingualNeural';
-    const key = voiceIdx + '|' + text;
+    const meta = (window.PED && PED.langMeta && PED.langMeta()) || {};
+    const voice = meta.edge || (C.voices && C.voices[voiceIdx % C.voices.length]) || 'en-US-EmmaMultilingualNeural';
+    const key = voice + '|' + text;
     if (cache.has(key)) return cache.get(key);
     const url = BRIDGE + '/tts?voice=' + encodeURIComponent(voice) + '&text=' + encodeURIComponent(text);
     const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
@@ -170,12 +203,24 @@
 
   function playUrl(url, gen) {
     return new Promise((res) => {
-      if (gen !== generation) return res();
+      if (gen !== generation) return res(false);
+      let settled = false;
+      const finish = (ok) => {
+        if (settled) return;
+        settled = true;
+        res(!!ok);
+      };
       try { if (player) { player.pause(); player.src = ''; } } catch (_) {}
       player = new Audio(url);
-      player.onended = () => res();
-      player.onerror = () => res();
-      player.play().catch(() => res());
+      player.onended = () => finish(true);
+      player.onerror = () => finish(false);
+      player.play().then(() => {
+        // play started — wait for onended (do not early-fail)
+      }).catch(() => finish(false));
+      // Only treat as silent failure if never started
+      setTimeout(() => {
+        if (!settled && !(player && !player.paused && player.currentTime > 0)) finish(false);
+      }, 4000);
     });
   }
 
@@ -191,13 +236,16 @@
       new Promise(r => setTimeout(() => r(null), 3000))
     ]);
     if (gen !== generation) return;
+    let played = false;
     if (winner) {
-      await playUrl(winner.u || winner, gen);
-      if (gen === generation) speakingUntil = Date.now() + 300;
-      return;
+      played = await playUrl(winner.u || winner, gen);
     }
-    await speakSystem(text, gen);
-    if (gen === generation) speakingUntil = Date.now() + 400;
+    if (!played) {
+      // edge-tts was silent — try system voice
+      await speakSystem(text, gen);
+    }
+    if (gen !== generation) return;
+    speakingUntil = Date.now() + 400;
   }
 
   function prewarm() {

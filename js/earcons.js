@@ -13,6 +13,7 @@
     if (ctx.state === 'suspended') ctx.resume();
     return ctx;
   }
+  // Expose for the audio-resume retry loop in app.js
   function tone(freq, t0, dur, type = 'sine', gain = 0.12) {
     const a = ac();
     const o = a.createOscillator();
@@ -30,6 +31,7 @@
     done()   { tone(880, 0, 0.08); tone(1175, 0.09, 0.16, 'sine', 0.09); },
     think()  { tone(340, 0, 0.06, 'triangle', 0.06); },
     error()  { tone(180, 0, 0.25, 'sawtooth', 0.07); },
-    unlock() { ac(); }                                                // call on first user gesture
+    unlock() { ac(); },                                                // call on first user gesture
+    get _ctx() { return ctx; }
   };
 })();
