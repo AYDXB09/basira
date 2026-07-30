@@ -22,6 +22,7 @@
   let audioCtx = null;
   let sources = [];
   let activeReader = null;
+  let activePlaybackCancel = null;
   const cache = new Map();
 
   function actx() {
@@ -166,7 +167,10 @@
       u.lang = meta.tts || 'en-US';
       u.rate = 1.05;
       u.pitch = 1.0;
+      let launched = false;
       const doSpeak = () => {
+        if (launched || gen !== generation) return;
+        launched = true;
         const vs = synth.getVoices();
         const pfx = (u.lang || 'en').slice(0, 2).toLowerCase();
         u.voice =
@@ -195,28 +199,41 @@
   }
 
   function playUrl(url, gen) {
-    return new Promise((res) => {
-      if (gen !== generation) return res(false);
-      let settled = false;
-      const finish = (ok) => {
-        if (settled) return;
-        settled = true;
-        res(!!ok);
-      };
+    let startResolve, finishResolve;
+    let startSettled = false, finishSettled = false;
+    const started = new Promise(res => { startResolve = res; });
+    const finished = new Promise(res => { finishResolve = res; });
+    const markStarted = (ok) => {
+      if (startSettled) return;
+      startSettled = true;
+      startResolve(!!ok);
+    };
+    const finish = (ok) => {
+      if (finishSettled) return;
+      finishSettled = true;
+      markStarted(ok);
+      finishResolve(!!ok);
+    };
+    const cancel = () => {
       try { if (player) { player.pause(); player.src = ''; } } catch (_) {}
-      player = new Audio();
-      player.preload = 'auto';
-      player.onended = () => finish(true);
-      player.onerror = () => finish(false);
-      // As soon as data flows, mark as successfully started (progressive MP3)
-      player.oncanplay = () => { /* started */ };
-      player.src = url;
-      player.play().catch(() => finish(false));
-      // If nothing started by 4s, treat as failure
-      setTimeout(() => {
-        if (!settled && !(player && !player.paused && player.currentTime > 0)) finish(false);
-      }, 4000);
-    });
+      finish(false);
+    };
+    if (gen !== generation) {
+      finish(false);
+      return { started, finished, cancel };
+    }
+    try { if (player) { player.pause(); player.src = ''; } } catch (_) {}
+    player = new Audio();
+    player.preload = 'auto';
+    player.onplaying = () => markStarted(true);
+    player.onended = () => finish(true);
+    player.onerror = () => finish(false);
+    player.src = url;
+    player.play().catch(() => finish(false));
+    setTimeout(() => {
+      if (!startSettled) finish(false);
+    }, 5000);
+    return { started, finished, cancel };
   }
 
   async function speak(text) {
@@ -226,14 +243,19 @@
     currentText = text;
     speakingUntil = Infinity;
 
-    // edge-tts streams progressively — no pre-download wait
-    const played = await Promise.race([
-      playUrl(edgeUrl(text), gen),
-      new Promise(r => setTimeout(() => r(false), 5000))
-    ]);
+    // Wait separately for playback to start and finish. A long answer is not
+    // a failed answer and must never trigger a second system voice.
+    const playback = playUrl(edgeUrl(text), gen);
+    activePlaybackCancel = playback.cancel;
+    const played = await playback.started;
     if (gen !== generation) return;
     if (!played) {
+      playback.cancel();
+      activePlaybackCancel = null;
       await speakSystem(text, gen);
+    } else {
+      await playback.finished;
+      activePlaybackCancel = null;
     }
     if (gen !== generation) return;
     speakingUntil = Date.now() + 400;
@@ -255,6 +277,8 @@
     generation++;
     try { if (activeReader) activeReader.cancel(); } catch (_) {}
     activeReader = null;
+    try { if (activePlaybackCancel) activePlaybackCancel(); } catch (_) {}
+    activePlaybackCancel = null;
     sources.forEach(s => { try { s.stop(); } catch (_) {} });
     sources = [];
     try { if (player) { player.pause(); player.src = ''; } } catch (_) {}

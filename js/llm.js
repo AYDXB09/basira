@@ -26,17 +26,25 @@
   }
 
   /** Drop giant base64 images from history — keep short text only (API size/timeout killer). */
-  function sanitizeMessages(messages) {
+  function sanitizeMessages(messages, preserveImages) {
     return messages.map(m => {
       const role = m.role || 'user';
       const t = extractText(m.content);
+      if (preserveImages && Array.isArray(m.content)) {
+        const content = m.content.map(part => {
+          if (part?.type === 'image_url' && part.image_url?.url) return part;
+          if (part?.type === 'text') return { type: 'text', text: String(part.text || '').slice(0, 12000) };
+          return null;
+        }).filter(Boolean);
+        return content.length ? { role, content } : null;
+      }
       // if multimodal user turn, keep a short stub so context isn't blank
       if (Array.isArray(m.content) && m.content.some(p => p && (p.type === 'image_url' || p.image_url))) {
         return { role, content: t || '[student shared an image]' };
       }
       // cap insanely long strings
       return { role, content: t.length > 12000 ? t.slice(0, 12000) + '…' : t };
-    }).filter(m => m.content);
+    }).filter(m => m && m.content);
   }
 
   async function chatOnce(messages, opts, model) {
@@ -48,7 +56,7 @@
     }
     const body = {
       model: model || C.models.chat,
-      messages: sanitizeMessages(messages),
+      messages: sanitizeMessages(messages, !!opts.preserveImages),
       temperature: opts.temperature ?? 0.5,
       max_tokens: opts.maxTokens ?? 800
     };
