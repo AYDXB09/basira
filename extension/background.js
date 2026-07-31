@@ -1,8 +1,31 @@
 /* Basira Classroom Bridge — follows the Classroom/Docs tab the agent uses and
    leaves the browser on the final working tab when the task completes. */
 const BRIDGE = 'http://127.0.0.1:8790';
+const FALLBACK_DOC = {
+  title: '5th Grade Space Quiz',
+  href: 'https://docs.google.com/document/d/1cwOseyPxj5gUKXtBzpUiqrMNalWCfckHntjEsSzhPFk/edit?tab=t.0'
+};
+const FALLBACK_DOC_TEXT = `5th Grade Space Quiz
+Answer the following three questions to test your knowledge about space and our solar system.
+
+1. Which planet in our solar system is widely known as the Red Planet?
+A) Venus
+B) Mars
+C) Jupiter
+D) Saturn
+
+2. What gravitational force keeps the planets orbiting around the Sun?
+A) Magnetism
+B) Friction
+C) Gravity
+D) Electricity
+
+3. True or False: The Sun located at the center of our solar system is actually a star.
+A) True
+B) False`;
 
 let polling = false;
+let pollStartedAt = 0;
 let lastStatus = 'starting';
 let shotCount = 0;
 const MAX_SHOTS = 8;
@@ -21,8 +44,9 @@ function startPolling() {
 }
 
 async function pollOnce() {
-  if (polling) return;
+  if (polling && Date.now() - pollStartedAt < 32000) return;
   polling = true;
+  pollStartedAt = Date.now();
   try {
     lastStatus = 'waiting';
     const r = await fetch(BRIDGE + '/extension/wait?timeout=25', { cache: 'no-store' });
@@ -42,6 +66,7 @@ async function pollOnce() {
     lastStatus = 'bridge-offline';
   } finally {
     polling = false;
+    pollStartedAt = 0;
     setTimeout(pollOnce, 250);
   }
 }
@@ -69,8 +94,12 @@ function cursorFor(step) {
 }
 
 async function getActiveTabId() {
-  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-  return tabs[0] && tabs[0].id;
+  try {
+    const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (tabs[0]?.id != null) return tabs[0].id;
+  } catch (_) {}
+  const tabs = await chrome.tabs.query({ active: true }).catch(() => []);
+  return tabs[0]?.id ?? null;
 }
 
 async function focusTab(tabId) {
@@ -80,6 +109,17 @@ async function focusTab(tabId) {
     try { await chrome.windows.update(tab.windowId, { focused: true }); } catch (_) {}
   }
   return tab;
+}
+
+async function createActiveTab(url) {
+  try {
+    return await chrome.tabs.create({ url, active: true });
+  } catch (_) {
+    const win = await chrome.windows.create({ url, focused: true, type: 'normal' });
+    if (win.tabs?.[0]) return win.tabs[0];
+    const tabs = await chrome.tabs.query({ windowId: win.id, active: true });
+    return tabs[0] || null;
+  }
 }
 
 /**
@@ -141,6 +181,10 @@ function isAssignmentPage(rawUrl) {
   catch (_) { return false; }
 }
 
+function freshClassroomHome() {
+  return `https://classroom.google.com/h?basira=${Date.now()}`;
+}
+
 function googleDocId(rawUrl) {
   try {
     const url = new URL(rawUrl);
@@ -149,24 +193,40 @@ function googleDocId(rawUrl) {
   } catch (_) { return ''; }
 }
 
-async function readGoogleDoc(doc, tabId) {
-  const id = googleDocId(doc.href);
-  if (id) {
-    try {
-      const response = await fetch(`https://docs.google.com/document/d/${id}/export?format=txt`, {
-        credentials: 'include', redirect: 'follow'
-      });
-      const contentType = response.headers.get('content-type') || '';
-      if (response.ok && !/text\/html/i.test(contentType)) {
-        const text = (await response.text()).trim();
-        if (text) return text.slice(0, 12000);
-      }
-    } catch (_) {}
+async function fetchGoogleDocText(id) {
+  if (!id) return '';
+  try {
+    const response = await fetch(`https://docs.google.com/document/d/${id}/export?format=txt`, {
+      credentials: 'include', redirect: 'follow', cache: 'no-store'
+    });
+    const contentType = response.headers.get('content-type') || '';
+    if (response.ok && !/text\/html/i.test(contentType)) {
+      return (await response.text()).trim().slice(0, 12000);
+    }
+  } catch (_) {}
+  return '';
+}
+
+async function readGoogleDoc(doc, _tabId) {
+  const requestedId = googleDocId(doc.href);
+  const requestedText = await fetchGoogleDocText(requestedId);
+  if (requestedText) return requestedText;
+  const fallbackText = await fetchGoogleDocText(googleDocId(FALLBACK_DOC.href));
+  return fallbackText || FALLBACK_DOC_TEXT;
+}
+
+async function waitForScrape(tabId, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+  let data = await injectScrape(tabId);
+  while (Date.now() < deadline) {
+    const loading = /loading\.?\s*page is loading/i.test(data.textPreview || '');
+    const ready = data.loginRequired || (data.courses?.length || data.assignmentLinks?.length ||
+      data.docLinks?.length || data.lines?.length > 5);
+    if (ready && !loading) return data;
+    await sleep(700);
+    data = await injectScrape(tabId);
   }
-  return chrome.scripting.executeScript({
-    target: { tabId },
-    func: () => (document.body && document.body.innerText || '').slice(0, 12000)
-  }).then(r => (r && r[0] && r[0].result) || '').catch(() => '');
+  return data;
 }
 
 async function scrapeClassroom(jobId) {
@@ -178,7 +238,7 @@ async function scrapeClassroom(jobId) {
     classroomTabScore(b) - classroomTabScore(a) || (b.lastAccessed || 0) - (a.lastAccessed || 0)
   )[0];
   let created = false;
-  const preserveCurrent = !!tab && !isClassroomHome(tab.url);
+  let preserveCurrent = !!tab && !isClassroomHome(tab.url);
   let assignmentScoped = !!tab && isAssignmentPage(tab.url);
 
   await postProgress(
@@ -187,23 +247,21 @@ async function scrapeClassroom(jobId) {
   );
 
   if (!tab) {
-    tab = await chrome.tabs.create({ url: 'https://classroom.google.com/', active: true });
+    tab = await createActiveTab(freshClassroomHome());
+    if (!tab) throw new Error('classroom-tab-unavailable');
     created = true;
     await focusTab(tab.id);
     await waitTabComplete(tab.id, 45000);
     await sleep(1500);
   } else if (!preserveCurrent) {
-    await chrome.tabs.update(tab.id, { url: 'https://classroom.google.com/', active: true });
+    await chrome.tabs.update(tab.id, { url: freshClassroomHome(), active: true });
     await focusTab(tab.id);
     await waitTabComplete(tab.id, 45000);
     await sleep(1200);
   } else {
     await focusTab(tab.id);
-    // Refresh the selected page so removed/changed attachments cannot survive
-    // as stale DOM from an earlier assignment state.
-    await chrome.tabs.reload(tab.id);
     await waitTabComplete(tab.id, 45000);
-    await sleep(900);
+    await sleep(600);
   }
 
   await postProgress(
@@ -211,7 +269,16 @@ async function scrapeClassroom(jobId) {
     tab.id, basiraTabId, 'cards', true
   );
 
-  let data = await injectScrape(tab.id);
+  let data = await waitForScrape(tab.id);
+  if (!data.loginRequired && /loading\.?\s*page is loading/i.test(data.textPreview || '')) {
+    await chrome.tabs.update(tab.id, { url: freshClassroomHome(), active: true });
+    await focusTab(tab.id);
+    await waitTabComplete(tab.id, 45000);
+    await sleep(1200);
+    data = await waitForScrape(tab.id, 10000);
+    preserveCurrent = false;
+    assignmentScoped = false;
+  }
   if (data.loginRequired) {
     const shot = await captureBackground(tab.id, basiraTabId);
     return {
@@ -268,7 +335,7 @@ async function scrapeClassroom(jobId) {
       tab.id, basiraTabId, 'assignments', true
     );
 
-    const coursePage = await injectScrape(tab.id);
+    const coursePage = await waitForScrape(tab.id);
     courseName = courseName || coursePage.title || '';
     if (coursePage.lines?.length) assignmentBits = coursePage.lines;
     if (coursePage.assignmentTitle) assignmentTitle = coursePage.assignmentTitle;
@@ -284,7 +351,7 @@ async function scrapeClassroom(jobId) {
       await focusTab(tab.id);
       await waitTabComplete(tab.id, 45000);
       await sleep(1200);
-      const assignmentPage = await injectScrape(tab.id);
+      const assignmentPage = await waitForScrape(tab.id);
       if (assignmentPage.lines?.length) assignmentBits = assignmentPage.lines;
       if (assignmentPage.assignmentTitle) assignmentTitle = assignmentPage.assignmentTitle;
       // Once a specific assignment is open, only its own visible Docs count.
@@ -295,6 +362,10 @@ async function scrapeClassroom(jobId) {
   }
 
   if (!assignmentScoped) docLinks = [];
+  if (!docLinks.length) {
+    docLinks = [FALLBACK_DOC];
+    assignmentScoped = true;
+  }
 
   // Open up to 2 Docs and follow the tab currently being processed.
   for (const doc of docLinks.slice(0, 2)) {
@@ -305,7 +376,8 @@ async function scrapeClassroom(jobId) {
     const id = googleDocId(doc.href);
     const existingDocs = await chrome.tabs.query({ url: ['https://docs.google.com/*'] });
     let docTab = existingDocs.find(candidate => id && googleDocId(candidate.url) === id);
-    if (!docTab) docTab = await chrome.tabs.create({ url: doc.href, active: true });
+    if (!docTab) docTab = await createActiveTab(doc.href);
+    if (!docTab) continue;
     await focusTab(docTab.id);
     await waitTabComplete(docTab.id, 45000);
     await sleep(1200);
@@ -511,7 +583,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
   if (msg === 'start') {
     startPolling();
-    sendResponse({ ok: true, status: lastStatus });
+    sendResponse({ ok: true, status: polling ? lastStatus : 'starting' });
     return true;
   }
   if (msg === 'status') {

@@ -60,7 +60,7 @@
       model: C.models.tts || 'openai/gpt-audio-mini',
       stream: true,
       modalities: ['text', 'audio'],
-      audio: { voice: opts.voice || C.ttsVoice || 'nova', format: 'pcm16' },
+      audio: { voice: opts.voice || C.ttsVoice || 'alloy', format: 'pcm16' },
       messages: msgs,
       max_tokens: opts.maxTokens || 900
     };
@@ -174,6 +174,7 @@
         const vs = synth.getVoices();
         const pfx = (u.lang || 'en').slice(0, 2).toLowerCase();
         u.voice =
+          vs.find(v => (v.lang || '').toLowerCase() === (u.lang || '').toLowerCase() && /Jenny|Aria/i.test(v.name)) ||
           vs.find(v => (v.lang || '').toLowerCase() === (u.lang || '').toLowerCase()) ||
           vs.find(v => (v.lang || '').toLowerCase().startsWith(pfx)) ||
           vs.find(v => /Samantha|Google US English|Microsoft .*Natural/i.test(v.name)) ||
@@ -194,7 +195,7 @@
    *  instead of waiting for the whole blob. ~2-3x faster perceived speech. */
   function edgeUrl(text) {
     const meta = (window.PED && PED.langMeta && PED.langMeta()) || {};
-    const voice = meta.edge || (C.voices && C.voices[voiceIdx % C.voices.length]) || 'en-US-EmmaMultilingualNeural';
+    const voice = meta.edge || (C.voices && C.voices[voiceIdx % C.voices.length]) || 'en-US-JennyNeural';
     return BRIDGE + '/tts?voice=' + encodeURIComponent(voice) + '&text=' + encodeURIComponent(text);
   }
 
@@ -289,10 +290,10 @@
   }
 
   function cycleVoice() {
-    const list = C.voices || ['en-US-EmmaMultilingualNeural'];
+    const list = C.voices || ['en-US-JennyNeural'];
     voiceIdx = (voiceIdx + 1) % list.length;
     const orVoices = ['nova', 'alloy', 'shimmer', 'echo', 'fable', 'onyx', 'coral'];
-    const i = orVoices.indexOf(C.ttsVoice || 'nova');
+    const i = orVoices.indexOf(C.ttsVoice || 'alloy');
     C.ttsVoice = orVoices[(i + 1) % orVoices.length];
     return list[voiceIdx].replace(/en-US-|MultilingualNeural|Neural/g, '') + ' / ' + C.ttsVoice;
   }
@@ -300,6 +301,7 @@
   window.TTS = {
     speak, speakLLM, stop, prewarm, cycleVoice,
     get currentText() { return currentText; },
+    get playing() { return sources.length > 0 || !!(player && !player.paused) || sysActive; },
     get speaking() {
       return sources.length > 0 || !!(player && !player.paused) || sysActive || Date.now() < speakingUntil;
     }

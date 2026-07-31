@@ -23,10 +23,9 @@
 7. CHECK UNDERSTANDING with a tiny question when teaching something new.`;
 
   const LANGS = [
-    { id: 'en', name: 'English',  tts: 'en-US', stt: 'en-US', edge: 'en-US-EmmaMultilingualNeural', gptHint: 'English' },
+    { id: 'en', name: 'English',  tts: 'en-US', stt: 'en-US', edge: 'en-US-JennyNeural', gptHint: 'English' },
     { id: 'ar', name: 'العربية',  tts: 'ar-SA', stt: 'ar-SA', edge: 'ar-SA-ZariyahNeural', gptHint: 'Arabic (clear modern standard, natural spoken)' },
     { id: 'hi', name: 'हिन्दी',   tts: 'hi-IN', stt: 'hi-IN', edge: 'hi-IN-SwaraNeural', gptHint: 'Hindi' },
-    { id: 'fr', name: 'Français', tts: 'fr-FR', stt: 'fr-FR', edge: 'fr-FR-DeniseNeural', gptHint: 'French' },
     { id: 'es', name: 'Español',  tts: 'es-ES', stt: 'es-ES', edge: 'es-ES-ElviraNeural', gptHint: 'Spanish' },
     { id: 'ur', name: 'اردو',     tts: 'ur-PK', stt: 'ur-PK', edge: 'ur-PK-UzmaNeural', gptHint: 'Urdu' },
     { id: 'de', name: 'Deutsch',  tts: 'de-DE', stt: 'de-DE', edge: 'de-DE-KatjaNeural', gptHint: 'German' },
@@ -35,6 +34,7 @@
 
   const DEFAULTS = { vision: 'congenital', lang: 'en', level: 'high' };
   let profile = load() || Object.assign({}, DEFAULTS);
+  if (!LANGS.some(language => language.id === profile.lang)) profile.lang = 'en';
   let customTemplate = loadCustom();
 
   function load() {
@@ -150,17 +150,15 @@ Your mission is not to give raw answers or lecture-style explanations. Instead, 
     if (/[\u0900-\u097F]/.test(s)) return 'hi';
 
     const lower = s.toLowerCase();
-    if (/\b(bonjour|salut|merci|comment|quoi|explique|je veux|parle français)\b/.test(lower)) return 'fr';
     if (/\b(hola|gracias|por favor|qué|como estás|explica|habla español)\b/.test(lower)) return 'es';
     if (/\b(hallo|danke|bitte|was ist|wie|erkl[äa]r|sprich deutsch)\b/.test(lower)) return 'de';
     if (/\b(olá|obrigad|por favor|como|o que|fale português|fala português)\b/.test(lower)) return 'pt';
 
-    if (/\b(speak|talk|switch|change).{0,12}\b(english|arabi[bc]|hindi|french|spanish|urdu|german|portuguese)\b/.test(lower)
-      || /\b(in english|in arabic|in hindi|in french|in spanish|in urdu|in german|in portuguese)\b/.test(lower)) {
+    if (/\b(speak|talk|switch|change).{0,12}\b(english|arabi[bc]|hindi|spanish|urdu|german|portuguese)\b/.test(lower)
+      || /\b(in english|in arabic|in hindi|in spanish|in urdu|in german|in portuguese)\b/.test(lower)) {
       if (/\benglish\b/.test(lower)) return 'en';
       if (/\barabi/.test(lower)) return 'ar';
       if (/\bhindi\b/.test(lower)) return 'hi';
-      if (/\bfrench\b/.test(lower)) return 'fr';
       if (/\bspanish\b/.test(lower)) return 'es';
       if (/\burdu\b/.test(lower)) return 'ur';
       if (/\bgerman\b/.test(lower)) return 'de';
@@ -175,7 +173,7 @@ Your mission is not to give raw answers or lecture-style explanations. Instead, 
 
     if (/[A-Za-z]{3,}/.test(s) && cur === 'en') return 'en';
     if (/[A-Za-z]{12,}/.test(s) && !/[\u0600-\u06FF\u0900-\u097F]/.test(s)) {
-      if (cur === 'fr' || cur === 'es' || cur === 'de' || cur === 'pt') return cur;
+      if (cur === 'es' || cur === 'de' || cur === 'pt') return cur;
       return 'en';
     }
     return cur;

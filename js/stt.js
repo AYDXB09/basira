@@ -12,6 +12,8 @@
   let errCount = 0;
   let restartTimer = null;
   let generation = 0;
+  let finalForSpeech = false;
+  let hints = [];
 
   function supported() { return !!SR; }
 
@@ -49,6 +51,11 @@
     if (want) restart(400);
   }
 
+  function setHints(values) {
+    hints = [...new Set((values || []).map(value => String(value || '').trim()).filter(Boolean))].slice(0, 30);
+    if (want) restart(250);
+  }
+
   function spin() {
     if (!want || !SR) return;
     clearRestart();
@@ -59,7 +66,16 @@
     next.lang = lang;
     next.continuous = true;
     next.interimResults = true;
-    next.maxAlternatives = 1;
+    next.maxAlternatives = 5;
+    const GrammarList = window.SpeechGrammarList || window.webkitSpeechGrammarList;
+    if (GrammarList && hints.length) {
+      try {
+        const grammar = new GrammarList();
+        const terms = hints.map(value => value.replace(/[;|=]/g, ' ')).join(' | ');
+        grammar.addFromString(`#JSGF V1.0; grammar answers; public <answer> = ${terms};`, 1);
+        next.grammars = grammar;
+      } catch (_) {}
+    }
 
     next.onaudiostart = () => {
       if (token !== generation) return;
@@ -70,6 +86,13 @@
     next.onspeechstart = () => {
       if (token !== generation) return;
       heardAnything = true;
+      finalForSpeech = false;
+    };
+    next.onspeechend = () => {
+      if (token !== generation || finalForSpeech) return;
+      setTimeout(() => {
+        if (token === generation && !finalForSpeech && handlers?.onNoMatch) handlers.onNoMatch();
+      }, 350);
     };
     next.onresult = (e) => {
       if (token !== generation) return;
@@ -80,7 +103,9 @@
         const text = e.results[i][0].transcript;
         if (e.results[i].isFinal) {
           const finalText = text.trim();
-          if (finalText && handlers?.onUtterance) handlers.onUtterance(finalText);
+          finalForSpeech = !!finalText;
+          const alternatives = [...e.results[i]].map(result => result.transcript.trim()).filter(Boolean);
+          if (finalText && handlers?.onUtterance) handlers.onUtterance(finalText, alternatives);
         } else {
           interim += text;
         }
@@ -130,7 +155,7 @@
   }
 
   window.STT = {
-    supported, startAlways, stopAlways, setLang,
+    supported, startAlways, stopAlways, setLang, setHints,
     get running() { return want; },
     get heardAnything() { return heardAnything; },
     get lastError() { return lastError; },

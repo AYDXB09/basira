@@ -22,5 +22,5 @@
 Also works: interrupt anytime by speaking; **Data** exports telemetry JSON.
 
 ## Buttons
-- **DEMO** — Maya / Grade 5 / Space quiz / last-week plants memory
+- **DEMO** — fictional Grade 5 learner / Space quiz / last-week plants memory
 - Camera · Upload · Data · Key

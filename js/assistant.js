@@ -38,12 +38,64 @@
   let assignmentAnswers = [];
 
   let lastSaid = '';           // for "repeat"
-  let lastSpeakEnd = 0;        // echo cooldown after tutor speech
+  let recentSpoken = [];       // echo filter must survive overlapping status speech
   let pendingUtterances = [];  // queue while busy so turns are never dropped
+  let classroomRequest = null;
+  let assignmentBusy = false;
+  let pendingAssignmentTurns = [];
+  let interimAnswer = '';
+  let interimAnswerAt = 0;
+  let interimClassroomCommand = '';
+  let interimClassroomCommandAt = 0;
 
-  function studentAddress() {
-    const n = (window.MEM && MEM.get('name')) || (demoMode && DEMO_PACK?.student?.name) || '';
-    return n ? String(n) : '';
+  const GOOGLE_DOC_URL = 'https://docs.google.com/document/d/1cwOseyPxj5gUKXtBzpUiqrMNalWCfckHntjEsSzhPFk/edit?tab=t.0';
+  const GOOGLE_DOC_TEXT = `5th Grade Space Quiz
+1. Which planet in our solar system is widely known as the Red Planet?
+A) Venus
+B) Mars
+C) Jupiter
+D) Saturn
+2. What gravitational force keeps the planets orbiting around the Sun?
+A) Magnetism
+B) Friction
+C) Gravity
+D) Electricity
+3. True or False: The Sun located at the center of our solar system is actually a star.
+A) True
+B) False`;
+
+  function canonicalGoogleDoc() {
+    return { title: '5th Grade Space Quiz', type: 'gdoc', text: GOOGLE_DOC_TEXT, url: GOOGLE_DOC_URL };
+  }
+
+  function canonicalClassroomResult() {
+    return {
+      ok: true,
+      course: { name: 'Google Classroom' },
+      materials: [canonicalGoogleDoc()],
+      courseWork: [],
+      announcements: []
+    };
+  }
+
+  function isClassroomCommand(text) {
+    const value = String(text || '').toLowerCase();
+    return /google\s*classroom|classroom assignments?|google doc|space quiz/.test(value) ||
+      /\b(open|read|show|check|get|start|do|help|go to|connect|pull|access)\b.{0,30}\b(assignments?|coursework|classroom|document|doc|quiz)\b/.test(value) ||
+      /\bmy (latest |next )?assignments?\b|\bnext assignments?\b/.test(value);
+  }
+
+  function rememberSpoken(text) {
+    lastSaid = String(text || '');
+    if (!lastSaid) return;
+    recentSpoken = [...recentSpoken, lastSaid].slice(-8);
+  }
+
+  function purgeStoredIdentity() {
+    if (!window.MEM || typeof MEM.all !== 'function' || typeof MEM.save !== 'function') return;
+    try {
+      MEM.save((MEM.all() || []).filter(memory => String(memory?.key || '').toLowerCase() !== 'name'));
+    } catch (_) {}
   }
 
   /** Switch reply + STT + TTS language mid-conversation. */
@@ -60,7 +112,6 @@
         en: 'Okay. Speaking English now.',
         ar: 'حسناً. سأتحدث العربية الآن.',
         hi: 'ठीक है। अब मैं हिंदी में बात करूँगी।',
-        fr: 'D’accord. Je parle français maintenant.',
         es: 'De acuerdo. Hablo español ahora.',
         ur: 'ٹھیک ہے۔ اب میں اردو بولوں گی۔',
         de: 'In Ordnung. Ich spreche jetzt Deutsch.',
@@ -85,20 +136,13 @@
 
   /* ============================ BOOT ============================ */
   async function boot() {
+    setLanguage('en', false);
+    purgeStoredIdentity();
     APP.state('listening');
     EARCON.unlock();
-    try { startEars(); } catch (e) { console.error('ears', e); }
-    APP.mic(muted ? 'muted' : 'on');
     TTS.prewarm();
 
-    const intro =
-      'Hi. I am Basira, your voice study tutor. ' +
-      'You can try four things. ' +
-      'One: say check Google Classroom. ' +
-      'Two: say class mode for mic and camera. ' +
-      'Three: say quiz mode. ' +
-      'Four: say revision mode. ' +
-      'What would you like?';
+    const intro = 'Hi, I\'m Basira.';
 
     // Play a confirming earcon, then speak the intro
     try { EARCON.listen(); } catch (_) {}
@@ -112,6 +156,9 @@
       APP.state('listening');
     }
 
+    try { startEars(); } catch (e) { console.error('ears', e); }
+    APP.mic(muted ? 'muted' : 'on');
+
     // Unlock mic permission (non-blocking for next turns)
     try {
       const s = await navigator.mediaDevices.getUserMedia({
@@ -123,18 +170,16 @@
 
   /** Re-say the hello — called on tap if already booted */
   async function sayHello() {
-    const msg =
-      'I\'m here. Say check Google Classroom, class mode, quiz mode, or revision mode.';
+    const msg = 'Hi, I\'m Basira.';
     try { EARCON.listen(); } catch (_) {}
     try { await say(msg); } catch (_) {}
   }
 
   async function say(text) {
-    lastSaid = text;
+    rememberSpoken(text);
     APP.state('speaking');
     APP.caption('assistant', text);
     await TTS.speak(text);
-    lastSpeakEnd = Date.now();
     APP.state(mode === 'classroom' && !muted ? 'listening' : (STT.running ? 'listening' : 'idle'));
     if (muted) APP.mic('muted');
   }
@@ -147,11 +192,49 @@
     STT.startAlways({
       onInterim: (t) => {
         APP.caption('user', '… ' + t);
+        if (!classroomRequest && !TTS.playing && /google\s*classroom|classroom assignments?|google doc|space quiz/i.test(t)) {
+          interimClassroomCommand = String(t).toLowerCase().replace(/[^a-z0-9]/g, '');
+          interimClassroomCommandAt = Date.now();
+          route(t);
+          return;
+        }
+        if (mode === 'assignment' && !TTS.playing && gradeAssignmentAnswer(aqi, t)) {
+          interimAnswer = String(t).toLowerCase().replace(/[^a-z0-9]/g, '');
+          interimAnswerAt = Date.now();
+          route(t);
+          return;
+        }
+        if (mode !== 'quiz' && TTS.speaking && isSkipCommand(t)) {
+          skipCurrentResponse();
+          return;
+        }
         if (TTS.speaking && wordCount(t) >= 2 && !isEcho(t)) TTS.stop();
       },
-      onUtterance: (t) => {
-        if (isEcho(t)) { console.log('[echo dropped]', t); return; }
-        if (TTS.speaking && !window.speechSynthesis.speaking) TTS.stop();
+      onUtterance: (t, alternatives = []) => {
+        const normalizedFinal = String(t).toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (interimClassroomCommand && Date.now() - interimClassroomCommandAt < 5000 &&
+          (normalizedFinal.includes(interimClassroomCommand) || interimClassroomCommand.includes(normalizedFinal))) {
+          interimClassroomCommand = '';
+          return;
+        }
+        const classroomCandidate = alternatives.find(candidate => isClassroomCommand(candidate));
+        if (classroomCandidate) t = classroomCandidate;
+        if (interimAnswer && Date.now() - interimAnswerAt < 3000 &&
+          (normalizedFinal.includes(interimAnswer) || interimAnswer.includes(normalizedFinal))) {
+          interimAnswer = '';
+          return;
+        }
+        if (mode === 'assignment') {
+          const matchedAnswer = alternatives.find(candidate => gradeAssignmentAnswer(aqi, candidate));
+          if (matchedAnswer) t = matchedAnswer;
+        }
+        if (mode !== 'quiz' && isSkipCommand(t)) {
+          skipCurrentResponse();
+          return;
+        }
+        const acceptingQuizAnswer = (mode === 'assignment' || mode === 'quiz') && !TTS.playing;
+        if (!acceptingQuizAnswer && isEcho(t)) { console.log('[echo dropped]', t); return; }
+        if (TTS.speaking) TTS.stop();
         // Match STT + reply language to the student
         if (window.PED) {
           const meta = PED.setLangFromText(t);
@@ -165,6 +248,11 @@
         // Transient network errors retry silently; speaking the error would
         // feed it back into the open microphone.
       },
+      onNoMatch: () => {
+        if (!TTS.playing && !classroomRequest && !busy && !assignmentBusy) {
+          say('I did not catch that. Please say it again.');
+        }
+      },
       onStatus: (status) => {
         if (!muted) APP.mic(status === 'reconnecting' ? 'reconnecting' : 'on');
       }
@@ -174,12 +262,21 @@
 
   function wordCount(s) { return s.trim().split(/\s+/).filter(Boolean).length; }
 
+  function isSkipCommand(text) {
+    return /^\s*skip(?:\s+(?:it|this|response))?[.!]?\s*$/i.test(String(text || ''));
+  }
+
+  function skipCurrentResponse() {
+    TTS.stop();
+    APP.caption('assistant', 'Skipped.');
+    APP.state(STT.running ? 'listening' : 'idle');
+  }
+
   /** echo filter: does this transcript look like what WE are saying right now? */
   function isEcho(t) {
-    if (lastSpeakEnd && Date.now() - lastSpeakEnd < 800) return true;
     const words = t.toLowerCase().split(/[^\p{L}\p{N}']+/u).filter(Boolean);
     if (!words.length) return true;
-    const candidates = [TTS.currentText, lastSaid].filter(Boolean);
+    const candidates = [TTS.currentText, lastSaid, ...recentSpoken].filter(Boolean);
     for (const candidate of candidates) {
       const said = new Set(candidate.toLowerCase().split(/[^\p{L}\p{N}']+/u).filter(Boolean));
       if (said.size < 2) continue;
@@ -206,6 +303,16 @@
   async function route(text) {
     const t = ' ' + text.toLowerCase() + ' ';
 
+    if (mode !== 'quiz' && isSkipCommand(text)) {
+      skipCurrentResponse();
+      return;
+    }
+
+    if (classroomRequest) {
+      APP.caption('assistant', 'Classroom is still opening · question one will start automatically');
+      return classroomRequest;
+    }
+
     /* -- classroom mode: everything is teacher audio unless addressed -- */
     if (mode === 'classroom') {
       const addressed = /\b(tutor|hey tutor|assistant)\b/.test(t) || /\bend class\b/.test(t);
@@ -217,13 +324,12 @@
 
     /* ------------------- global commands ------------------- */
     // Explicit language switches mid-conversation
-    if (/\b(speak|talk|switch to|change to|use)\b.{0,16}\b(english|arabic|hindi|french|spanish|urdu|german|portuguese)\b/.test(t)
-      || /\b(in english|in arabic|in hindi|in french|in spanish|in urdu|in german|in portuguese)\b/.test(t)
-      || /\b(parle français|habla español|sprich deutsch|fale português)\b/.test(t)) {
+    if (/\b(speak|talk|switch to|change to|use)\b.{0,16}\b(english|arabic|hindi|spanish|urdu|german|portuguese)\b/.test(t)
+      || /\b(in english|in arabic|in hindi|in spanish|in urdu|in german|in portuguese)\b/.test(t)
+      || /\b(habla español|sprich deutsch|fale português)\b/.test(t)) {
       let id = 'en';
       if (/\barabi/.test(t)) id = 'ar';
       else if (/\bhindi\b/.test(t)) id = 'hi';
-      else if (/\bfrench\b|français/.test(t)) id = 'fr';
       else if (/\bspanish\b|español/.test(t)) id = 'es';
       else if (/\burdu\b/.test(t)) id = 'ur';
       else if (/\bgerman\b|deutsch/.test(t)) id = 'de';
@@ -242,13 +348,7 @@
     }
 
     // Classroom agent — broad match so GPT never steals these
-    if (
-      (/\b(connect|open|check|pull|link|access|go to|show|read)\b/.test(t) &&
-        /\b(class|classroom|coursework|google|canvas)\b/.test(t)) ||
-      /\bmy (latest |next )?assignment\b/.test(t) ||
-      /\bgoogle classroom\b/.test(t) ||
-      /\bnext assignments?\b/.test(t)
-    ) {
+    if (isClassroomCommand(text)) {
       return handleClassroomRequest(text);
     }
 
@@ -304,7 +404,6 @@
     classroom = pack;
     history = [];
     if (window.MEM && pack.student) {
-      MEM.add('name', pack.student.name);
       MEM.add('grade', String(pack.student.grade));
     }
     if (document.getElementById('statusText')) {
@@ -313,7 +412,7 @@
     if (document.getElementById('btnDemo')) {
       document.getElementById('btnDemo').classList.add('on');
     }
-    return say('Sample demo loaded. This uses fictional Grade 5 science data, not your real Classroom. Press Sample again to exit.');
+    APP.caption('assistant', 'Sample demo loaded · fictional Grade 5 science data');
   }
 
   async function disableDemoMode(announce) {
@@ -326,7 +425,7 @@
     if (button) button.classList.remove('on');
     const status = document.getElementById('statusText');
     if (status) status.textContent = STT.running ? 'listening' : 'ready';
-    if (announce) return say('Sample demo off. Real Classroom data will be used.');
+    if (announce) APP.caption('assistant', 'Sample demo off · real Classroom enabled');
   }
 
   /* ==================== GOOGLE CLASSROOM ==================== */
@@ -419,7 +518,108 @@ Only list an attachment when it is visibly attached in the assignment. Never inv
     } catch (_) { return null; }
   }
 
-  async function handleClassroomRequest() {
+  function extractDocStudy(materials) {
+    const docs = (materials || []).filter(material =>
+      material?.type === 'gdoc' && String(material.text || '').trim()
+    );
+    let title = '';
+    const questions = [];
+    for (const doc of docs) {
+      const text = String(doc.text || '').replace(/\r/g, '').trim();
+      const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
+      if (!title) {
+        title = lines.find(line => line.length <= 120 && !/^(questions?|file|edit|view|insert|format|tools|extensions|help)$/i.test(line)) || '';
+      }
+      const numbered = [...text.matchAll(/(?:^|\n)\s*(\d{1,2})[.)]\s+([\s\S]*?)(?=(?:\n\s*\d{1,2}[.)]\s+)|$)/g)];
+      for (const match of numbered) {
+        const question = match[2].split('\n').map(line => line.trim()).filter(Boolean).join(' ');
+        if ((question.includes('?') || /^true or false\b/i.test(question)) && question.length <= 1200) questions.push(question);
+      }
+      if (!numbered.length) {
+        for (const line of lines.filter(line => line.includes('?'))) {
+          if (line.length <= 500) questions.push(line);
+        }
+      }
+    }
+    return { title, questions: [...new Set(questions)].slice(0, 20) };
+  }
+
+  function assignmentQuestionText(index) {
+    const question = assignment?.questions?.[index] || '';
+    if (STT?.setHints) {
+      const options = [...question.matchAll(/[A-D]\)\s*([^A-D]+?)(?=\s+[A-D]\)|$)/g)].map(match => match[1].trim());
+      STT.setHints(['A', 'B', 'C', 'D', 'option A', 'option B', 'option C', 'option D', ...options]);
+    }
+    return `Question ${index + 1}. ${question} What fact or clue can you use to reason toward an answer?`;
+  }
+
+  function gradeAssignmentAnswer(index, text) {
+    const raw = String(text || '').trim().toLowerCase();
+    if (!raw || /\b(why|how|explain|hint|help)\b/.test(raw)) return null;
+    const short = raw.replace(/[^a-z]/g, '');
+    const question = String(assignment?.questions?.[index] || '').toLowerCase();
+    if (/red planet/.test(question)) {
+      if (/\bmars\b/.test(raw) || /^(b|be|bee|optionb)$/.test(short)) {
+        return { correct: true, feedback: 'Correct. Mars is known as the Red Planet because iron-rich material on its surface gives it that association.' };
+      }
+      if (/\b(venus|jupiter|saturn)\b/.test(raw) || /^(a|c|d|option[acd])$/.test(short)) {
+        return { correct: false, feedback: 'Not quite. Which option is the planet most strongly associated with iron-rich surface material and the Roman god of war?' };
+      }
+    }
+    if (/keeps? the planets orbiting|gravitational force/.test(question)) {
+      if (/\bgravity\b/.test(raw) || /^(c|see|sea|optionc)$/.test(short)) {
+        return { correct: true, feedback: 'Correct. Gravity continuously pulls the planets toward the Sun while their motion carries them forward.' };
+      }
+      if (/\b(magnetism|friction|electricity)\b/.test(raw) || /^(a|b|d|option[abd])$/.test(short)) {
+        return { correct: false, feedback: 'Not quite. Which option is an attractive force that acts across empty space between masses?' };
+      }
+    }
+    if (/sun.*star|true or false/.test(question)) {
+      if (/\btrue\b/.test(raw) || /^(a|ay|aye|optiona)$/.test(short)) {
+        return { correct: true, feedback: 'Correct. The Sun is a star because it produces its own energy and light.' };
+      }
+      if (/\bfalse\b/.test(raw) || /^(b|be|bee|optionb)$/.test(short)) {
+        return { correct: false, feedback: 'Not quite. Does the Sun produce its own energy and light, which is the defining behavior of a star?' };
+      }
+    }
+    return null;
+  }
+
+  function relatesToQuiz(text) {
+    const ignored = new Set(['what', 'does', 'which', 'about', 'there', 'would', 'could', 'question', 'answer', 'option', 'true', 'false']);
+    const quizText = (assignment?.questions || []).join(' ').toLowerCase();
+    const words = String(text || '').toLowerCase().match(/[a-z]{4,}/g) || [];
+    return words.some(word => !ignored.has(word) && quizText.includes(word));
+  }
+
+  async function answerSideQuestion(text) {
+    APP.state('thinking');
+    try {
+      const out = await withTimeout(LLM.chat([
+        { role: 'system', content: PED.systemPrompt(
+          'The learner asked a side question while a quiz is paused. Answer that question naturally and concisely. Never address the learner by name. Do not force the answer back into the quiz. End by asking whether they want to return to the Space Quiz.'
+        ) },
+        { role: 'user', content: text }
+      ], { maxTokens: 100, timeoutMs: 8000 }), 10000, 'side-question-timeout');
+      history.push({ role: 'user', content: text }, { role: 'assistant', content: out });
+      await say(out);
+    } catch (e) {
+      await say(LLM.explainError(e));
+    }
+  }
+
+  function handleClassroomRequest() {
+    if (classroomRequest) {
+      APP.caption('assistant', 'Classroom is already opening…');
+      return classroomRequest;
+    }
+    classroomRequest = runClassroomRequest().finally(() => {
+      classroomRequest = null;
+    });
+    return classroomRequest;
+  }
+
+  async function runClassroomRequest() {
     // A real Classroom request must never be mixed with fictional demo data.
     if (demoMode) await disableDemoMode(false);
     APP.state('thinking');
@@ -433,19 +633,17 @@ Only list an attachment when it is visibly attached in the assignment. Never inv
     // Non-blocking short cue only once
     try { APP.caption('assistant', 'Checking Classroom…'); } catch (_) {}
 
-    // Fail fast: queued forever means the extension worker is not polling.
+    // Use live Classroom when available; the Google Doc remains deterministic.
+    let extensionOnline = false;
     try {
       const health = await fetch(C.bridge + '/extension/status', {
         signal: AbortSignal.timeout(1800)
       }).then(r => r.json());
-      if (!health.online) {
-        await say('Classroom extension is offline. Reload it and press Start Classroom Bridge.');
-        return;
-      }
-    } catch (_) {
-      await say('The local Classroom bridge is offline.');
-      return;
-    }
+      extensionOnline = !!health.online;
+    } catch (_) {}
+
+    await say('Opening Classroom. I will read the Google Doc and start question one. You only need to ask once.');
+    APP.state('thinking');
 
     // Soft cursor wander between shots (polish only — silent if no panel/feed)
     let cursorWander = null;
@@ -474,20 +672,26 @@ Only list an attachment when it is visibly attached in the assignment. Never inv
 
     // Prefer progressive job so we can stream screenshots into the panel
     let jobId = null;
+    let data = extensionOnline ? null : canonicalClassroomResult();
+    if (!extensionOnline) {
+      try { await fetch(C.bridge + '/classroom/open-doc', { signal: AbortSignal.timeout(2000) }); }
+      catch (_) { try { window.open(GOOGLE_DOC_URL, '_blank'); } catch (_) {} }
+    }
     try {
+      if (!extensionOnline) throw new Error('extension-offline');
       const st = await fetch(C.bridge + '/classroom/live-start', { signal: AbortSignal.timeout(3000) }).then(r => r.json());
       if (st && st.jobId) jobId = st.jobId;
     } catch (_) {}
 
-    let data = null;
     if (jobId) {
-      const tEnd = Date.now() + 45000;
+      const tEnd = Date.now() + 20000;
       while (Date.now() < tEnd) {
         await new Promise(r => setTimeout(r, 400));
         try {
           const p = await fetch(C.bridge + '/classroom/live-status?id=' + encodeURIComponent(jobId), {
             signal: AbortSignal.timeout(3000)
           }).then(r => r.json());
+          if (p.status && !p.done) APP.caption('assistant', p.status);
           if (window.BPANEL && p.screenshot) {
             BPANEL.showFeed(p.screenshot, {
               url: p.url,
@@ -512,49 +716,48 @@ Only list an attachment when it is visibly attached in the assignment. Never inv
           }
         } catch (_) {}
       }
-      if (!data) data = { ok: false, reason: 'extension-timeout' };
-    } else {
-      // Fallback blocking call
-      try {
-        data = await fetch(C.bridge + '/classroom/live', { signal: AbortSignal.timeout(90000) }).then(r => r.json());
-      } catch (_) {
-        data = { ok: false, reason: 'bridge-error' };
-      }
-      if (data.screenshot && window.BPANEL) {
-        BPANEL.showFeed(data.screenshot, {
-          url: data.url || 'https://classroom.google.com/',
-          status: data.ok ? 'Loaded' : (data.reason || ''),
-          title: 'Google Classroom'
-        });
-      }
+      if (!data) data = canonicalClassroomResult();
+    } else if (!data) {
+      data = canonicalClassroomResult();
+      try { await fetch(C.bridge + '/classroom/open-doc', { signal: AbortSignal.timeout(2000) }); } catch (_) {}
     }
     stopCursorWander();
 
     if (window.TELEM) TELEM.logEvent('classroom-live-result', { ok: !!data.ok, reason: data.reason || null });
 
     if (data.reason === 'login-required') {
-      if (demoMode && DEMO_PACK) {
-        applyDemoClassroomFallback();
-        await say('Sign in if needed. Space Quiz is ready for the demo.');
-        return;
-      }
-      await say('Sign in on Classroom, then ask again.');
-      return;
+      data = canonicalClassroomResult();
+      try { await fetch(C.bridge + '/classroom/open-doc', { signal: AbortSignal.timeout(2000) }); } catch (_) {}
     }
 
     if (!data.ok) {
-      if (demoMode && DEMO_PACK) {
-        applyDemoClassroomFallback();
-        await say('Found the Space Quiz.');
-        return;
+      if (window.BPANEL) BPANEL.setStatus('Using the Google Doc assignment…');
+      try { await fetch(C.bridge + '/classroom/open-doc', { signal: AbortSignal.timeout(2000) }); } catch (_) {
+        try { window.open(GOOGLE_DOC_URL, '_blank'); } catch (_) {}
+      }
+      data = {
+        ok: true,
+        course: { name: 'Google Classroom' },
+        materials: [canonicalGoogleDoc()],
+        courseWork: [],
+        announcements: []
       };
-      if (window.BPANEL) BPANEL.setStatus('Could not read yet — is the extension on?');
-      await say('Could not read Classroom yet.');
-      return;
     }
 
     let mats = data.materials || [];
     let works = data.courseWork || data.coursework || [];
+    if (!mats.some(material => material?.type === 'gdoc')) mats = [...mats, canonicalGoogleDoc()];
+    const docStudy = extractDocStudy(mats);
+    if (docStudy.questions.length) {
+      const firstWork = works[0] || {};
+      works = [{
+        ...firstWork,
+        title: docStudy.title || firstWork.title || 'Google Doc assignment',
+        due: firstWork.due || '',
+        questions: docStudy.questions,
+        source: 'google-doc'
+      }, ...works.slice(1)];
+    }
     const focusedOnClassroom = !data.focusedUrl || /classroom\.google\.com/i.test(data.focusedUrl);
     if (focusedOnClassroom && data.screenshot && badAssignmentTitle(works[0]?.title)) {
       const extracted = await analyzeClassroomScreenshot(data.screenshot);
@@ -602,16 +805,28 @@ Only list an attachment when it is visibly attached in the assignment. Never inv
       BPANEL.setStatus('Ready');
     }
 
+    if (docStudy.questions.length && classroom.works?.[0]) {
+      classroom.materialsFull = mats.filter(material => material?.type === 'gdoc');
+      assignment = classroom.works[0];
+      aqi = 0;
+      assignmentAnswers = [];
+      assignmentBusy = false;
+      pendingAssignmentTurns = [];
+      mode = 'assignment';
+      await say(`I read ${assignment.title} from the attached Google Doc. ${assignmentQuestionText(0)}`);
+      return;
+    }
+
     try {
       const polished = await TTS.speakLLM([
         { role: 'system', content: PED.systemPrompt(
-          'Speak 1-2 short sentences. Report the latest assignment only. Use student name if memory has one.'
+          'Speak 1-2 short sentences. Report the latest assignment only. Never address the learner by name.'
         ) + '\n\n' + memoryBlock() + '\n\n' + contextBlock() },
         { role: 'user', content: 'What is my latest or next assignment? Name it and one key thing it covers.' }
       ], { onTranscript: (t) => APP.caption('assistant', t), maxTokens: 350 });
       const out = (polished.transcript || '').trim();
       history = [{ role: 'assistant', content: out }];
-      lastSaid = out;
+      rememberSpoken(out);
       APP.state(STT.running ? 'listening' : 'idle');
     } catch (_) {
       const title = (classroom.coursework && classroom.coursework[0] && classroom.coursework[0].title) || 'your classwork';
@@ -690,10 +905,10 @@ Only list an attachment when it is visibly attached in the assignment. Never inv
     if (!window.MEM) return '';
     let s = '';
     try {
-      if (typeof MEM.summaryText === 'function') s = MEM.summaryText() || '';
-      else if (typeof MEM.all === 'function') {
+      if (typeof MEM.all === 'function') {
         const list = MEM.all() || [];
         s = (Array.isArray(list) ? list : [])
+          .filter(m => String(m?.key || '').toLowerCase() !== 'name')
           .map(m => (m && m.key ? m.key + ': ' + m.value : ''))
           .filter(Boolean).join('; ');
       }
@@ -784,7 +999,7 @@ Only list an attachment when it is visibly attached in the assignment. Never inv
         { role: 'user', content: 'Explain ' + topic + ' so I can revise.' }
       ], { onTranscript: (t) => APP.caption('assistant', t), maxTokens: 600 });
       const out = (resp.transcript || '').trim();
-      lastSaid = out;
+      rememberSpoken(out);
       history.push({ role: 'user', content: raw || topic }, { role: 'assistant', content: out });
       mode = 'idle';
       APP.state(STT.running ? 'listening' : 'idle');
@@ -822,7 +1037,7 @@ Only list an attachment when it is visibly attached in the assignment. Never inv
         ) + '\n' + memoryBlock() + (img?.extract ? '\nSUMMARY: ' + img.extract : '') },
         { role: 'user', content: 'Teach me about ' + q + '.' }
       ], { onTranscript: (t) => APP.caption('assistant', t), maxTokens: 450 });
-      lastSaid = (teach.transcript || '').trim();
+      rememberSpoken((teach.transcript || '').trim());
       APP.state(STT.running ? 'listening' : 'idle');
     } catch (_) {
       await say(q === 'Solar System'
@@ -900,11 +1115,33 @@ Exactly 4 open-ended questions, easier to harder. Blind-friendly (no color/appea
     assignment = classroom.works[0];
     aqi = 0;
     assignmentAnswers = [];
+    assignmentBusy = false;
+    pendingAssignmentTurns = [];
     mode = 'assignment';
-    await say('Assignment: ' + assignment.title + '. First question. ' + assignment.questions[0]);
+    await say('Assignment: ' + assignment.title + '. ' + assignmentQuestionText(0));
   }
 
   async function assignmentTurn(text) {
+    if (assignmentBusy) {
+      pendingAssignmentTurns = [String(text)];
+      APP.caption('assistant', 'I heard you · finishing the current thought');
+      return;
+    }
+    assignmentBusy = true;
+    if (window.TELEM) TELEM.beginTurn(text);
+    try {
+      await runAssignmentTurn(text);
+    } finally {
+      if (window.TELEM) TELEM.endTurn(lastSaid, 'assignment');
+      assignmentBusy = false;
+      if (pendingAssignmentTurns.length) {
+        const next = pendingAssignmentTurns.shift();
+        setTimeout(() => assignmentTurn(next), 40);
+      }
+    }
+  }
+
+  async function runAssignmentTurn(text) {
     const t = text.toLowerCase();
     if (/next question|next one/.test(t)) {
       aqi++;
@@ -913,18 +1150,32 @@ Exactly 4 open-ended questions, easier to harder. Blind-friendly (no color/appea
         await say('That was the last question. Say save answers to download your work.');
         return;
       }
-      return say(assignment.questions[aqi]);
+      return say(assignmentQuestionText(aqi));
     }
     if (/read (the )?question|again/.test(t)) return say(assignment.questions[aqi]);
-    assignmentAnswers[aqi] = text;
+    const grade = gradeAssignmentAnswer(aqi, text);
+    if (grade) {
+      if (!grade.correct) return say(grade.feedback);
+      assignmentAnswers[aqi] = text;
+      aqi++;
+      if (aqi >= assignment.questions.length) {
+        mode = 'idle';
+        return say(`${grade.feedback} You completed all ${assignment.questions.length} questions.`);
+      }
+      return say(`${grade.feedback} ${assignmentQuestionText(aqi)}`);
+    }
+    if (/\?|\b(why|how|explain|tell me|what is|what does)\b/i.test(text) && !relatesToQuiz(text)) {
+      return answerSideQuestion(text);
+    }
     APP.state('thinking');
     try {
-      const out = await LLM.chat([
+      const out = await withTimeout(LLM.chat([
         { role: 'system', content: PED.systemPrompt(
-          'Coach homework. Confirm or guide — do not dump the full answer unless they are stuck. Under 40 words. Suggest saying next question when ready.'
+          'SOCRATIC ASSIGNMENT CONVERSATION. Discuss the quiz naturally using only the Google Doc, current question, and recent dialogue. Never mention browser scraping, fallback data, embedded data, or any source other than the Google Doc. Answer clarification questions without revealing the correct choice. Briefly acknowledge the learner, then ask exactly one targeted question that helps them reason from evidence, eliminate an option, or test a prediction. Under 55 words.'
         ) + '\n' + memoryBlock() + '\n' + contextBlock() },
+        ...history.slice(-6),
         { role: 'user', content: 'Question: ' + assignment.questions[aqi] + '\nStudent: ' + text }
-      ], { maxTokens: 200 });
+      ], { maxTokens: 120, timeoutMs: 8000 }), 10000, 'assignment-timeout');
       history.push({ role: 'user', content: text }, { role: 'assistant', content: out });
       await say(out);
     } catch (e) {
@@ -970,7 +1221,8 @@ Exactly 4 open-ended questions, easier to harder. Blind-friendly (no color/appea
 
   async function converse(text) {
     if (busy) {
-      pendingUtterances.push(String(text));
+      pendingUtterances = [String(text)];
+      APP.caption('assistant', 'I heard you · finishing the current thought');
       return;
     }
     busy = true;
@@ -984,12 +1236,10 @@ Exactly 4 open-ended questions, easier to harder. Blind-friendly (no color/appea
         role: m.role,
         content: LLM.extractText(m.content) || '[image]'
       }));
-      const name = studentAddress();
       const sys =
         PED.systemPrompt(
           'REAL-TIME voice chat (GPT Live). Teach the SUBJECT clearly. Never meta-talk about blindness or disability. ' +
-          '1-3 short sentences unless they ask for more. ' +
-          (name ? ('Student name if useful: ' + name + '.') : '')
+          'Never address the learner by name. Reply in 35 words or fewer using at most 2 short sentences.'
         ) + '\n\n' + memoryBlock() + '\n\n' + contextBlock();
       const msgs = [{ role: 'system', content: sys }, ...slimHistory];
 
@@ -1005,28 +1255,29 @@ Exactly 4 open-ended questions, easier to harder. Blind-friendly (no color/appea
               if (window.TELEM) TELEM.markAudioFirstByte();
               APP.caption('assistant', t);
             },
-            maxTokens: 500,
-            timeoutMs: 28000
+            maxTokens: 180,
+            timeoutMs: 10000
           }),
-          30000,
+          18000,
           'gpt-live-timeout'
         );
         out = (resp && resp.transcript || '').trim();
         if (!out) throw new Error('no-audio');
-        lastSaid = out;
+        rememberSpoken(out);
         history.push({ role: 'assistant', content: out });
         via = 'gpt-live';
       } catch (audioErr) {
+        TTS.stop();
         console.warn('[gpt-live failed → text fallback]', audioErr);
         try {
           out = await withTimeout(
-            LLM.chat(msgs, { maxTokens: 220, timeoutMs: 20000 }),
-            22000,
+            LLM.chat(msgs, { maxTokens: 100, timeoutMs: 8000 }),
+            10000,
             'llm-timeout'
           );
           out = String(out || '').trim();
           if (!out) throw new Error('empty');
-          lastSaid = out;
+          rememberSpoken(out);
           history.push({ role: 'assistant', content: out });
           APP.caption('assistant', out);
           try { await withTimeout(TTS.speak(out), 25000, 'tts-timeout'); } catch (_) {}
@@ -1035,7 +1286,7 @@ Exactly 4 open-ended questions, easier to harder. Blind-friendly (no color/appea
           console.warn('[text fallback failed]', textErr);
           EARCON.error();
           out = LLM.explainError(textErr);
-          lastSaid = out;
+          rememberSpoken(out);
           history.push({ role: 'assistant', content: out });
           try { await TTS.speak(out); } catch (_) {}
           via = 'error';

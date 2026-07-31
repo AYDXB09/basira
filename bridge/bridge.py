@@ -11,7 +11,6 @@
 import asyncio
 import json
 import os
-
 import threading
 import time
 import uuid
@@ -22,9 +21,10 @@ from urllib.parse import urlparse, parse_qs
 import edge_tts
 
 PORT = 8790
-DEFAULT_VOICE = "en-US-EmmaMultilingualNeural"
+DEFAULT_VOICE = "en-US-JennyNeural"
 HERE = os.path.dirname(os.path.abspath(__file__))
 CLASSROOM_URL = "https://classroom.google.com/"
+CLASSROOM_DOC_URL = "https://docs.google.com/document/d/1cwOseyPxj5gUKXtBzpUiqrMNalWCfckHntjEsSzhPFk/edit?tab=t.0"
 
 _lock = threading.Lock()
 _jobs = {}          # id -> job dict
@@ -32,7 +32,6 @@ _pending = []       # job ids waiting for extension
 _results = {}       # id -> result
 _progress = {}      # id -> {status, url, screenshot, done}
 _extension_state = {"last_seen": 0.0}
-
 
 
 def load_classroom() -> dict:
@@ -254,6 +253,13 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 webbrowser.open(CLASSROOM_URL)
                 return self._json({"ok": True, "opened": CLASSROOM_URL})
+            except Exception as exc:  # noqa: BLE001
+                return self._json({"ok": False, "error": str(exc)}, 500)
+
+        if url.path == "/classroom/open-doc":
+            try:
+                webbrowser.open(CLASSROOM_DOC_URL)
+                return self._json({"ok": True, "opened": CLASSROOM_DOC_URL})
             except Exception as exc:  # noqa: BLE001
                 return self._json({"ok": False, "error": str(exc)}, 500)
 

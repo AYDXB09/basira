@@ -120,10 +120,7 @@ console.log('\n=== 3. Language detection stickiness ===');
   ok('switches on Arabic script', PED.detectLangId('مرحبا كيف حالك') === 'ar');
   PED.saveProfile({ lang: 'en' });
   ok('detects Hindi script', PED.detectLangId('नमस्ते') === 'hi');
-  ok('detects French keyword', PED.detectLangId('bonjour comment ça va') === 'fr');
   ok('explicit switch to Spanish', PED.detectLangId('please speak spanish') === 'es');
-  PED.saveProfile({ lang: 'fr' });
-  ok('stays fr on short english ack', PED.detectLangId('thanks') === 'fr');
 }
 
 console.log('\n=== 4. Live OpenRouter text model ===');

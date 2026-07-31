@@ -44,10 +44,10 @@
     if (window.BPANEL) {
       BPANEL.show();
       BPANEL.setTitle('Demo · Grade 5 Science');
-      BPANEL.setStatus('Demo profile loaded · Maya · Space unit + last week biology');
+      BPANEL.setStatus('Fictional demo profile loaded · Space unit + last week biology');
       BPANEL.setBodyHtml(
         '<div style="font-size:13px;line-height:1.5">' +
-        '<b>Student</b> Maya (Grade 5, blind from birth)<br>' +
+        '<b>Student</b> Fictional Grade 5 learner<br>' +
         '<b>Class</b> ' + pack.course + ' · ' + pack.teacher + '<br>' +
         '<b>Assignment</b> Space Quiz<br>' +
         '<b>Memory</b> Last week: plant parts<br>' +

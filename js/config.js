@@ -16,12 +16,11 @@ window.B_CONFIG = {
   },
   bridge: 'http://127.0.0.1:8790',
   voices: [
-    'en-US-EmmaMultilingualNeural',
-    'en-US-AndrewMultilingualNeural',
-    'en-US-AvaMultilingualNeural'
+    'en-US-JennyNeural',
+    'en-US-AriaNeural'
   ],
-  ttsVoice: 'nova',
-  timeoutMs: 90000,
+  ttsVoice: 'alloy',
+  timeoutMs: 10000,
   maxFramesPerVideo: 6,
   frameWidth: 720,
   classroomSnapshotSec: 45,

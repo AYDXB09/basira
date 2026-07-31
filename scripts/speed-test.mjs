@@ -121,7 +121,6 @@ const scenarios = [
   { id: 'AR-short', lang: 'Arabic', user: 'ما هي الجاذبية؟', expectScript: /[\u0600-\u06FF]{4,}/ },
   { id: 'AR-teach', lang: 'Arabic', user: 'اشرح التمثيل الضوئي ببساطة', expectScript: /[\u0600-\u06FF]{4,}/ },
   { id: 'HI-short', lang: 'Hindi', user: 'गुरुत्वाकर्षण क्या है?', expectScript: /[\u0900-\u097F]{4,}/ },
-  { id: 'FR-short', lang: 'French', user: 'Qu\'est-ce que la gravité?', expectScript: /[A-Za-zé]{4,}/ },
   { id: 'ES-short', lang: 'Spanish', user: '¿Qué es la gravedad?', expectScript: /[A-Za-zñ]{4,}/ },
   { id: 'DE-short', lang: 'German', user: 'Was ist Schwerkraft?', expectScript: /[A-Za-zä]{4,}/ },
   { id: 'UR-short', lang: 'Urdu', user: 'ثقالت کیا ہے؟', expectScript: /[\u0600-\u06FF]{4,}/ }

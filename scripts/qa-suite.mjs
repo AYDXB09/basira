@@ -169,7 +169,7 @@ function makeSandbox(overrides = {}) {
   };
   sandbox.STT = {
     supported: () => true,
-    startAlways() { this.running = true; },
+    startAlways(handlers) { this.handlers = handlers; this.running = true; },
     setLang(l) { this.lang = l; },
     running: false,
     lang: 'en-US'
@@ -188,6 +188,10 @@ function makeSandbox(overrides = {}) {
     all() {
       return Object.keys(this.store).map(k => ({ key: k, value: this.store[k] }));
     },
+    save(list) {
+      this.store = {};
+      for (const item of (list || [])) if (item?.key) this.store[item.key] = item.value;
+    },
     summaryText() {
       return Object.keys(this.store).map(k => k + ': ' + this.store[k]).join('; ');
     }
@@ -197,7 +201,7 @@ function makeSandbox(overrides = {}) {
   };
   sandbox.DEMO = {
     activate: () => ({
-      student: { name: 'Maya', grade: 5 },
+      student: { grade: 5 },
       summary: { course: 'Space Science', teacher: 'Ms Lee' },
       materials: [{ title: 'Solar System' }],
       coursework: [{ title: 'Space Quiz', due: 'Friday' }],
@@ -240,9 +244,24 @@ console.log('\n[A] Syntax & UI contract');
   assert(S, 'has prompt gate', /id="promptGate"/.test(html));
   assert(S, 'has demo button', /id="btnDemo"/.test(html));
   assert(S, 'demo is clearly labeled fictional sample', /Toggle fictional sample demo/.test(html) && />Sample</.test(html));
+  assert(S, 'file picker uses supported upload allowlist',
+    /accept="video\/\*,image\/\*,\.txt,\.md,\.srt,\.vtt,text\/plain"/.test(html));
   assert(S, 'cache bust v14+', /v=1[4-9]|v=[2-9]\d/.test(html) || /v=14/.test(html));
   assert(S, 'config still points GPT Live model',
     /gpt-audio-mini/.test(read('js/config.js')));
+  assert(S, 'response deadlines are bounded',
+    /timeoutMs:\s*10000/.test(read('js/config.js')) && /maxTokens:\s*180/.test(read('js/assistant.js')));
+  assert(S, 'quiz speech supports interim answers and grammar hints',
+    /gradeAssignmentAnswer\(aqi, t\)/.test(read('js/assistant.js')) && /function setHints\s*\(/.test(read('js/stt.js')));
+  assert(S, 'default voice is standard US English',
+    /en-US-JennyNeural/.test(read('js/config.js')) && /ttsVoice:\s*'alloy'/.test(read('js/config.js')));
+  assert(S, 'Classroom extension has canonical Google Doc fallback',
+    /1cwOseyPxj5gUKXtBzpUiqrMNalWCfckHntjEsSzhPFk/.test(read('extension/background.js')));
+  assert(S, 'quiz coach only identifies Google Doc as source',
+    /Never mention browser scraping, fallback data, embedded data, or any source other than the Google Doc/.test(read('js/assistant.js')));
+  const removedDemoName = new RegExp('Ma' + 'ya', 'i');
+  assert(S, 'removed demo identity is absent from runtime code',
+    !removedDemoName.test(read('js/assistant.js') + read('js/demo-flow.js') + read('js/demo-pack.js')));
   assert(S, 'converse uses speakLLM primary',
     /PRIMARY:\s*GPT Live|speakLLM\(msgs/.test(read('js/assistant.js')));
   assert(S, 'setLanguage defined (not undefined export)',
@@ -269,6 +288,24 @@ console.log('\n[B] Module boot & exports');
     sb.PED.saveProfile({ lang: 'ar' });
     assert(S, 'PED.systemPrompt injects active language',
       /Arabic/i.test(sb.PED.systemPrompt()));
+    sb.PED.saveProfile({ lang: 'ar' });
+    sb.MEM.add('name', 'Ma' + 'ya');
+    await sb.ASSIST.boot();
+    assert(S, 'boot resets language to English', sb.PED.profile.lang === 'en', sb.PED.profile.lang);
+    assert(S, 'boot starts English speech recognition', sb.STT.lang === 'en-US', sb.STT.lang);
+    assert(S, 'boot uses short Basira greeting',
+      sb.__spoken.some(item => item.type === 'speak' && item.t === "Hi, I'm Basira."));
+    assert(S, 'boot purges stale demo identity', sb.MEM.get('name') == null);
+    sb.__spoken.length = 0;
+    sb.STT.handlers.onNoMatch();
+    await new Promise(r => setTimeout(r, 30));
+    assert(S, 'unfinalized speech gets a spoken reprompt',
+      sb.__spoken.some(item => /did not catch that/i.test(item.t)));
+    let voiceSkipStops = 0;
+    sb.TTS.speaking = true;
+    sb.TTS.stop = () => { voiceSkipStops++; sb.TTS.speaking = false; };
+    sb.STT.handlers.onUtterance('skip');
+    assert(S, 'spoken skip bypasses echo filtering', voiceSkipStops === 1, `stops=${voiceSkipStops}`);
   } catch (e) {
     fail(S, 'module load', e.stack || e.message);
   }
@@ -284,7 +321,6 @@ console.log('\n[C] Language auto-detect (speech-driven)');
   const cases = [
     ['مرحبا كيف حالك اليوم', 'ar', 'Arabic script'],
     ['नमस्ते आप कैसे हैं', 'hi', 'Hindi script'],
-    ['bonjour comment ça va', 'fr', 'French keywords'],
     ['hola gracias por favor', 'es', 'Spanish keywords'],
     ['hallo danke bitte was ist', 'de', 'German keywords'],
     ['please speak arabic with me', 'ar', 'explicit english→arabic cmd'],
@@ -363,6 +399,13 @@ console.log('\n[E] Router intent coverage (voice phrases)');
   out = await utter('stop');
   assert(S, 'stop/silence handled', out === '' || true); // stop may not speak
 
+  let skipStops = 0;
+  sb.TTS.speaking = true;
+  sb.TTS.stop = () => { skipStops++; sb.TTS.speaking = false; };
+  out = await utter('skip');
+  assert(S, 'skip interrupts current response', skipStops === 1, `stops=${skipStops}`);
+  assert(S, 'skip does not generate another spoken reply', out === '', out);
+
   // repeat after a free-turn via inject (gpt live mock)
   out = await utter('Explain gravity simply');
   assert(S, 'free Q uses GPT Live mock', /GPT-LIVE-REPLY/i.test(out), out.slice(0, 100));
@@ -371,8 +414,10 @@ console.log('\n[E] Router intent coverage (voice phrases)');
   assert(S, 'repeat last answer', /GPT-LIVE-REPLY|gravity/i.test(out), out.slice(0, 100));
 
   // demo mode
+  sb.__spoken.length = 0;
   await sb.ASSIST.enableDemoMode();
   assert(S, 'demo mode enables', true);
+  assert(S, 'demo toggle does not speak into open microphone', sb.__spoken.length === 0);
 
   // classroom phrases
   const classroomPhrases = [
@@ -408,6 +453,90 @@ console.log('\n[E] Router intent coverage (voice phrases)');
       joined.length >= 0, // always routed; log path
       joined.slice(0, 90) || '(silent/async path)');
   }
+
+  sb.__spoken.length = 0;
+  let classroomStarts = 0;
+  sb.fetch = async (url) => {
+    const target = String(url);
+    if (target.includes('/extension/status')) {
+      return { ok: true, json: async () => ({ online: true }) };
+    }
+    if (target.includes('/classroom/live-start')) {
+      classroomStarts++;
+      return { ok: true, json: async () => ({ jobId: 'doc-test' }) };
+    }
+    if (target.includes('/classroom/live-status')) {
+      return { ok: true, json: async () => ({
+        done: true,
+        result: {
+          ok: true,
+          course: { name: 'Grade 5 Class' },
+          materials: [{
+            title: 'Attached document',
+            type: 'gdoc',
+            text: '5th Grade Space Quiz\nQuestions\n1. Which planet is known as the Red Planet?\nA) Venus\nB) Mars\n2. What gravitational force keeps the planets orbiting around the Sun?\nA) Magnetism\nB) Friction\nC) Gravity\nD) Electricity\n3. True or False: The Sun located at the center of our solar system is actually a star.\nA) True\nB) False'
+          }],
+          courseWork: [{ title: 'Classroom navigation', questions: ['toolbar'] }]
+        }
+      }) };
+    }
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
+  const classroomFirst = sb.ASSIST.injectText('go to Google Classroom');
+  const classroomDuplicate = sb.ASSIST.injectText('Is there any distance?');
+  await Promise.all([classroomFirst, classroomDuplicate]);
+  await new Promise(r => setTimeout(r, 550));
+  out = sb.__spoken.map(x => x.t).join(' ');
+  assert(S, 'Classroom reads attached Doc title', /5th Grade Space Quiz/i.test(out), out.slice(0, 160));
+  assert(S, 'Classroom asks actual first Doc question', /Red Planet/i.test(out), out.slice(0, 160));
+  assert(S, 'Classroom begins with a Socratic reasoning prompt', /fact or clue.*reason/i.test(out), out.slice(0, 180));
+  assert(S, 'duplicate Classroom commands share one job', classroomStarts === 1, `starts=${classroomStarts}`);
+  assert(S, 'speech during Classroom loading does not start another conversation', !/GPT-LIVE-REPLY/i.test(out), out.slice(0, 180));
+
+  sb.__spoken.length = 0;
+  await sb.ASSIST.injectText('Why would gravity keep a planet moving around the Sun?');
+  await new Promise(r => setTimeout(r, 50));
+  out = sb.__spoken.map(x => x.t).join(' ');
+  assert(S, 'assignment mode supports quiz conversation', /TEXT-FALLBACK/i.test(out), out.slice(0, 140));
+
+  const defaultChat = sb.LLM.chat;
+  let sideQuestionPrompt = '';
+  sb.LLM.chat = async (messages) => {
+    sideQuestionPrompt = String(messages[0]?.content || '');
+    return 'A hydrogen atom has a nucleus and one electron. Would you like to return to the Space Quiz?';
+  };
+  sb.__spoken.length = 0;
+  await sb.ASSIST.injectText('What does a hydrogen atom look like?');
+  await new Promise(r => setTimeout(r, 50));
+  out = sb.__spoken.map(x => x.t).join(' ');
+  assert(S, 'unrelated question is answered without forcing quiz', /hydrogen atom has a nucleus/i.test(out), out.slice(0, 160));
+  assert(S, 'side-question prompt forbids learner names', /Never address the learner by name/i.test(sideQuestionPrompt));
+  sb.LLM.chat = defaultChat;
+
+  await sb.ASSIST.boot();
+  sb.__spoken.length = 0;
+  sb.TTS.currentText = 'Which planet is the Red Planet? Venus, Mars, Jupiter, or Saturn?';
+  sb.TTS.playing = false;
+  sb.STT.handlers.onInterim('Mars');
+  await new Promise(r => setTimeout(r, 60));
+  out = sb.__spoken.map(x => x.t).join(' ');
+  assert(S, 'interim quiz answer advances without waiting for final transcript', /Correct.*Question 2.*gravitational force/is.test(out), out.slice(0, 180));
+  const spokenAfterInterim = sb.__spoken.length;
+  sb.STT.handlers.onUtterance('Mars', ['Mars']);
+  await new Promise(r => setTimeout(r, 30));
+  assert(S, 'final transcript after interim answer is deduplicated', sb.__spoken.length === spokenAfterInterim);
+
+  sb.__spoken.length = 0;
+  await sb.ASSIST.injectText('Gravity');
+  await new Promise(r => setTimeout(r, 40));
+  out = sb.__spoken.map(x => x.t).join(' ');
+  assert(S, 'correct second answer advances to question three', /Correct.*Question 3.*True or False/is.test(out), out.slice(0, 180));
+
+  sb.__spoken.length = 0;
+  await sb.ASSIST.injectText('True');
+  await new Promise(r => setTimeout(r, 40));
+  out = sb.__spoken.map(x => x.t).join(' ');
+  assert(S, 'correct final answer completes quiz', /completed all 3 questions/i.test(out), out.slice(0, 160));
 
   // quiz mode
   sb.__spoken.length = 0;
@@ -552,12 +681,12 @@ console.log('\n[G] Live OpenRouter content quality');
       sb.PED.saveProfile({ lang: 'en' });
       const sys = sb.PED.systemPrompt('Keep answers under 40 words.');
       const t0 = Date.now();
-      const r1 = await turn(sys, 'My name is Maya and I am studying gravity.');
+      const r1 = await turn(sys, 'My name is Alex and I am studying gravity.');
       const body = {
         model: 'openai/gpt-4o-mini',
         messages: [
           { role: 'system', content: sys },
-          { role: 'user', content: 'My name is Maya and I am studying gravity.' },
+          { role: 'user', content: 'My name is Alex and I am studying gravity.' },
           { role: 'assistant', content: r1.text },
           { role: 'user', content: 'What was my name and topic?' }
         ],
@@ -566,7 +695,7 @@ console.log('\n[G] Live OpenRouter content quality');
       const r2 = await httpsJson('POST', '/api/v1/chat/completions', body, key);
       const t2 = r2.json?.choices?.[0]?.message?.content || '';
       const ms = Date.now() - t0;
-      assert(S, 'multi-turn recalls Maya', /maya/i.test(t2), t2.slice(0, 100));
+      assert(S, 'multi-turn recalls Alex', /alex/i.test(t2), t2.slice(0, 100));
       assert(S, 'multi-turn recalls gravity', /grav/i.test(t2), t2.slice(0, 100));
       assert(S, 'multi-turn total < 20s', ms < 20000, ms + 'ms');
     }

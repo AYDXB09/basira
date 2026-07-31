@@ -1,10 +1,9 @@
 /* ==========================================================================
- * demo-pack.js — 2-minute LIVE DEMO prefill (Grade 5 blind student "Maya")
+ * demo-pack.js — 2-minute LIVE DEMO prefill for a fictional Grade 5 learner
  * ========================================================================== */
 (function () {
   window.DEMO_PACK = {
     student: {
-      name: 'Maya',
       grade: 5,
       vision: 'congenital',
       notes: 'Blind from birth. Prefers part-to-whole tactile/sound analogies.'
@@ -60,7 +59,6 @@
       ]
     },
     memoriesSeed: [
-      { key: 'name', value: 'Maya' },
       { key: 'grade', value: '5' },
       { key: 'vision', value: 'blind from birth' },
       { key: 'class', value: 'Grade 5 Science with Ms. Rivera' },

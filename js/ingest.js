@@ -80,7 +80,7 @@
       } else if (f.type.startsWith('image/')) {
         say(`Reading ${f.name}…`);
         images.push({ label: f.name, data: await shrink(await readAsDataURL(f), C.frameWidth) });
-      } else {
+      } else if (f.type.startsWith('text/') || /\.(txt|md|srt|vtt)$/i.test(f.name)) {
         say(`Reading ${f.name}…`);
         try { texts.push({ label: f.name, text: (await readAsText(f)).slice(0, 16000) }); } catch (_) {}
       }
