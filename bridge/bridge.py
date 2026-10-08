@@ -11,7 +11,7 @@
 import asyncio
 import json
 import os
-
+import re
 import threading
 import time
 import uuid
@@ -22,6 +22,19 @@ from urllib.parse import urlparse, parse_qs
 import edge_tts
 
 PORT = 8790
+
+# The bridge serves a student's Google Classroom content on localhost, so it must
+# not be readable by arbitrary websites the user happens to visit. Only these
+# browser origins may talk to it: the hosted app, a local dev server, and the
+# Basira Chrome/Edge extension. Requests with no Origin header (curl, same-origin
+# navigations) are fine; any *other* Origin is rejected outright. The Host header
+# must also be a loopback name, which blocks DNS-rebinding.
+ALLOWED_ORIGIN_RE = re.compile(
+    r"^(https://aydxb09\.github\.io"
+    r"|http://(localhost|127\.0\.0\.1)(:\d+)?"
+    r"|chrome-extension://[a-p]{32})$"
+)
+ALLOWED_HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
 DEFAULT_VOICE = "en-US-EmmaMultilingualNeural"
 HERE = os.path.dirname(os.path.abspath(__file__))
 CLASSROOM_URL = "https://classroom.google.com/"
@@ -144,9 +157,21 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
-    def _send(self, code: int, ctype: str, body: bytes):
+    def _guard(self) -> bool:
+        """Reject disallowed Host/Origin before doing any work. True = proceed."""
+        host = (self.headers.get("Host") or "").lower()
+        origin = self.headers.get("Origin")
+        if host not in ALLOWED_HOSTS or (origin is not None and not ALLOWED_ORIGIN_RE.match(origin)):
+            self._send(403, "application/json", b'{"error": "forbidden origin"}', cors=False)
+            return False
+        return True
+
+    def _send(self, code: int, ctype: str, body: bytes, cors: bool = True):
         self.send_response(code)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self.headers.get("Origin")
+        if cors and origin:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Cache-Control", "no-store")
@@ -163,9 +188,13 @@ class Handler(BaseHTTPRequestHandler):
         self._send(code, "application/json", json.dumps(obj).encode())
 
     def do_OPTIONS(self):
+        if not self._guard():
+            return
         self._send(204, "text/plain", b"")
 
     def do_POST(self):
+        if not self._guard():
+            return
         url = urlparse(self.path)
         length = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(length) if length else b"{}"
@@ -197,6 +226,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"error": "not found"}, 404)
 
     def do_GET(self):
+        if not self._guard():
+            return
         url = urlparse(self.path)
         q = parse_qs(url.query)
 

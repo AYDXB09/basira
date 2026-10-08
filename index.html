@@ -94,7 +94,7 @@
   <div id="promptGate" hidden>
     <div class="pg-card" onclick="event.stopPropagation()">
       <h2>System prompt</h2>
-      <p>Live template judges see. Edit and Save — applies instantly. Language line still follows speech automatically.</p>
+      <p>The live instructions the tutor follows. Edit and Save — applies instantly. The language line still follows speech automatically.</p>
       <textarea id="pgInput" spellcheck="false"></textarea>
       <p id="pgNote" class="pg-note"></p>
       <div class="pg-actions">
@@ -113,12 +113,13 @@
       <p id="kgErr" class="kg-err" hidden></p>
       <button id="kgSave" type="button">Save & start</button>
       <p class="kg-hint">Key: <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a></p>
+      <p class="kg-hint">What leaves your device and where it goes: <a href="https://github.com/AYDXB09/basira/blob/main/docs/PRIVACY.md" target="_blank" rel="noopener">Privacy</a> · <a href="https://github.com/AYDXB09/basira/blob/main/docs/TERMS.md" target="_blank" rel="noopener">Terms</a></p>
       <button id="kgClear" type="button" class="kg-link">Clear saved key</button>
     </div>
   </div>
 
   <input type="file" id="fileInput" multiple
-         accept="video/*,image/*,.txt,.md,.srt,.vtt,.pdf,text/plain" hidden>
+         accept="video/*,image/*,.txt,.md,.srt,.vtt,text/plain" hidden>
 
 <script src="js/config.js?v=18"></script>
 <script src="js/config.local.js" onerror="this.remove()"></script>

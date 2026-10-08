@@ -1,7 +1,11 @@
 # Sources — how blind students learn (pedagogy layer)
 
-These are the sources behind the teaching rules injected into every model call
-(`js/pedagogy.js`). Verify titles/quotes before putting any on a slide.
+These are the sources behind the teaching approach in the Socratic system prompt
+(`js/pedagogy.js`). The "rule N" references below point to an earlier seven-rule
+version of that prompt (1 concreteness, 2 part-to-whole, 3 short audio chunks,
+4 spatial language without sight, 5 meaning over color, 6 teach the subject,
+7 check understanding); the current prompt folds those principles into one
+Socratic template. Verify titles/quotes before citing any of them.
 
 ## Core pedagogy
 

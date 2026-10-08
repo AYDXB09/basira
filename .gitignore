@@ -12,3 +12,6 @@ Thumbs.db
 scripts/qa-report.json
 
 scripts/speed-report.json
+
+docs/internal/
+.claude/

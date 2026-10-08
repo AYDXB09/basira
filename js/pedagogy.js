@@ -12,16 +12,6 @@
    * Full list: data/SOURCES.md
    */
 
-  const CORE_RULES = `TEACHING METHOD (apply silently — never name or explain these rules out loud):
-
-1. CONCRETENESS: explain with touch, sound, body feeling, sequence, and function — not with "look/see/picture this".
-2. PART-TO-WHOLE: name pieces one by one, then how they connect, then the whole.
-3. SHORT AUDIO CHUNKS: one idea per short sentence; light recap; invite "shall I continue?" only when useful.
-4. SPATIAL WITHOUT SIGHT: clock positions, left/right of the body, before/after in a sequence — never "here/this/that" without naming the thing.
-5. MEANING OVER COLOR: if color is only a label, replace with the functional label (first line, taller bar, warmer side).
-6. TEACH THE SUBJECT: charts, space, plants, math — the goal is understanding the content, not describing disability.
-7. CHECK UNDERSTANDING with a tiny question when teaching something new.`;
-
   const LANGS = [
     { id: 'en', name: 'English',  tts: 'en-US', stt: 'en-US', edge: 'en-US-EmmaMultilingualNeural', gptHint: 'English' },
     { id: 'ar', name: 'العربية',  tts: 'ar-SA', stt: 'ar-SA', edge: 'ar-SA-ZariyahNeural', gptHint: 'Arabic (clear modern standard, natural spoken)' },
